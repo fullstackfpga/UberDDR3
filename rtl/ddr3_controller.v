@@ -2884,9 +2884,9 @@ module ddr3_controller #(
 
         ANALYZE_DATA_PREP: begin
             write_pattern_lane <= write_pattern[ (lane_write_dq_late[lane]? 0 : data_start_index[lane])  +: 64];
-            read_data_store_lane <= {read_data_store[((DQ_BITS*LANES)*7 + {29'd0, lane}<<3) +: 8], read_data_store[((DQ_BITS*LANES)*6 + {29'd0, lane}<<3) +: 8],
-                        read_data_store[((DQ_BITS*LANES)*5 + {29'd0, lane}<<3) +: 8], read_data_store[((DQ_BITS*LANES)*4 + {29'd0, lane}<<3) +: 8], read_data_store[((DQ_BITS*LANES)*3 + {29'd0, lane}<<3) +: 8],
-                        read_data_store[((DQ_BITS*LANES)*2 + {29'd0, lane}<<3) +: 8],read_data_store[((DQ_BITS*LANES)*1 + {29'd0, lane}<<3) +: 8],read_data_store[((DQ_BITS*LANES)*0 + {29'd0, lane}<<3) +: 8] };
+            read_data_store_lane <= {read_data_store[((DQ_BITS*LANES)*7 + ({29'd0, lane}<<3)) +: 8], read_data_store[((DQ_BITS*LANES)*6 + ({29'd0, lane}<<3)) +: 8],
+                        read_data_store[((DQ_BITS*LANES)*5 + ({29'd0, lane}<<3)) +: 8], read_data_store[((DQ_BITS*LANES)*4 + ({29'd0, lane}<<3)) +: 8], read_data_store[((DQ_BITS*LANES)*3 + ({29'd0, lane}<<3)) +: 8],
+                        read_data_store[((DQ_BITS*LANES)*2 + ({29'd0, lane}<<3)) +: 8],read_data_store[((DQ_BITS*LANES)*1 + ({29'd0, lane}<<3)) +: 8],read_data_store[((DQ_BITS*LANES)*0 + ({29'd0, lane}<<3)) +: 8] };
             state_calibrate <= ANALYZE_DATA;
         end
 
