@@ -25,16 +25,16 @@ module clk_wiz
     .DIVCLK_DIVIDE        (1),
     .CLKFBOUT_MULT        (5), // 200 MHz * 5 = 1000 MHz
     .CLKFBOUT_PHASE       (0.000),
-    .CLKOUT0_DIVIDE       (12), // 1000 MHz / 12 = 83.333 MHz
+    .CLKOUT0_DIVIDE       (8), // 1000 MHz / 8 = 125 MHz
     .CLKOUT0_PHASE        (0.000),
     .CLKOUT0_DUTY_CYCLE   (0.500),
-    .CLKOUT1_DIVIDE       (3), // 1000 MHz / 3 = 333.333 MHz, 0 phase
+    .CLKOUT1_DIVIDE       (2), // 1000 MHz / 2 = 500 MHz, 0 phase
     .CLKOUT1_PHASE        (0.000),
     .CLKOUT1_DUTY_CYCLE   (0.500),
     .CLKOUT2_DIVIDE       (5), // 1000 MHz / 5 = 200 MHz
     .CLKOUT2_PHASE        (0.000),
     .CLKOUT2_DUTY_CYCLE   (0.500),
-    .CLKOUT3_DIVIDE       (3), // 1000 MHz / 3 = 333.333 MHz, 90 phase
+    .CLKOUT3_DIVIDE       (2), // 1000 MHz / 2 = 500 MHz, 90 phase
     .CLKOUT3_PHASE        (90.000),
     .CLKOUT3_DUTY_CYCLE   (0.500),
     .CLKIN1_PERIOD        (5.000) // 200 MHz input
