@@ -50,6 +50,7 @@
 // `define UART_DEBUG_READ_LEVEL
 // `define UART_DEBUG_WRITE_LEVEL
 // `define UART_DEBUG_ALIGN
+// `define UART_DEBUG_BIST
 
 
 `ifdef UART_DEBUG_READ_LEVEL
@@ -57,6 +58,8 @@
 `elsif UART_DEBUG_WRITE_LEVEL
     `define UART_DEBUG
 `elsif UART_DEBUG_ALIGN
+    `define UART_DEBUG
+`elsif UART_DEBUG_BIST
     `define UART_DEBUG
 `endif
 
@@ -1840,62 +1843,62 @@ module ddr3_controller #(
 
         // pending request on stage 1
         // if DDR3_CLK_PERIOD == 1250, then remove this anticipate stage 1 to pass timing
-        // if(DDR3_CLK_PERIOD != 1_250) begin
-        //     if(stage1_pending && !((stage1_next_bank == stage2_bank) && stage2_pending)) begin
-        //         //stage 1 will mainly be for anticipation (if next requests need to jump to new bank then 
-        //         //anticipate the precharging and activate of that next bank, BUT it can also handle
-        //         //precharge and activate of CURRENT wishbone request.
-        //         //Anticipate will depend if the request is on the end of the row 
-        //         // and must start the anticipation. For example if we have 10 rows in a bank:
-        //         //[R][R][R][R][R][R][R][A][A][A] -> [next bank]
-        //         //
-        //         //R = Request, A = Anticipate
-        //         //Unless we are near the third to the last column, stage 1 will
-        //         //issue Activate and Precharge on the CURRENT bank. Else, stage
-        //         //1 will issue Activate and Precharge for the NEXT bank
-        //         // Thus stage 1 anticipate makes sure smooth burst operation that jumps banks
-        //         if(bank_status_q[stage1_next_bank] &&  bank_active_row_q[stage1_next_bank] != stage1_next_row && delay_before_precharge_counter_q[stage1_next_bank] ==0 && !precharge_slot_busy) begin    
-        //             //set-up delay before read and write
-        //             delay_before_activate_counter_d[stage1_next_bank] = PRECHARGE_TO_ACTIVATE_DELAY;
-        //             if(DUAL_RANK_DIMM[0]) begin
-        //                 cmd_d[PRECHARGE_SLOT] = {!stage1_next_bank[(DUAL_RANK_DIMM[0]? BA_BITS : 0)], stage1_next_bank[(DUAL_RANK_DIMM[0]? BA_BITS : 0)], CMD_PRE[2:0], cmd_odt, cmd_ck_en, cmd_reset_n, stage1_next_bank[BA_BITS-1:0], { {{ROW_BITS-32'd11}{1'b0}} , 1'b0 , stage1_next_row[(DUAL_RANK_DIMM[0]? 9 : 8):0] } };
-        //             end
-        //             else begin
-        //                 cmd_d[PRECHARGE_SLOT] = {1'b0, CMD_PRE[2:0], cmd_odt, cmd_ck_en, cmd_reset_n, stage1_next_bank, { {{ROW_BITS-32'd11}{1'b0}} , 1'b0 , stage1_next_row[9:0] } };
-        //             end
-        //             bank_status_d[stage1_next_bank] = 1'b0; 
-        //         end //end of anticipate precharge
+        if(DDR3_CLK_PERIOD != 1_250) begin
+            if(stage1_pending && !((stage1_next_bank == stage2_bank) && stage2_pending)) begin
+                //stage 1 will mainly be for anticipation (if next requests need to jump to new bank then 
+                //anticipate the precharging and activate of that next bank, BUT it can also handle
+                //precharge and activate of CURRENT wishbone request.
+                //Anticipate will depend if the request is on the end of the row 
+                // and must start the anticipation. For example if we have 10 rows in a bank:
+                //[R][R][R][R][R][R][R][A][A][A] -> [next bank]
+                //
+                //R = Request, A = Anticipate
+                //Unless we are near the third to the last column, stage 1 will
+                //issue Activate and Precharge on the CURRENT bank. Else, stage
+                //1 will issue Activate and Precharge for the NEXT bank
+                // Thus stage 1 anticipate makes sure smooth burst operation that jumps banks
+                if(bank_status_q[stage1_next_bank] &&  bank_active_row_q[stage1_next_bank] != stage1_next_row && delay_before_precharge_counter_q[stage1_next_bank] ==0 && !precharge_slot_busy) begin    
+                    //set-up delay before read and write
+                    delay_before_activate_counter_d[stage1_next_bank] = PRECHARGE_TO_ACTIVATE_DELAY;
+                    if(DUAL_RANK_DIMM[0]) begin
+                        cmd_d[PRECHARGE_SLOT] = {!stage1_next_bank[(DUAL_RANK_DIMM[0]? BA_BITS : 0)], stage1_next_bank[(DUAL_RANK_DIMM[0]? BA_BITS : 0)], CMD_PRE[2:0], cmd_odt, cmd_ck_en, cmd_reset_n, stage1_next_bank[BA_BITS-1:0], { {{ROW_BITS-32'd11}{1'b0}} , 1'b0 , stage1_next_row[(DUAL_RANK_DIMM[0]? 9 : 8):0] } };
+                    end
+                    else begin
+                        cmd_d[PRECHARGE_SLOT] = {1'b0, CMD_PRE[2:0], cmd_odt, cmd_ck_en, cmd_reset_n, stage1_next_bank, { {{ROW_BITS-32'd11}{1'b0}} , 1'b0 , stage1_next_row[9:0] } };
+                    end
+                    bank_status_d[stage1_next_bank] = 1'b0; 
+                end //end of anticipate precharge
                 
-        //         //anticipated bank is idle so do activate
-        //         else if(!bank_status_q[stage1_next_bank] && delay_before_activate_counter_q[stage1_next_bank] == 0 && !activate_slot_busy) begin 
-        //             // must meet TRRD (activate to activate delay)
-        //             for(index=0; index < (1<<(BA_BITS+DUAL_RANK_DIMM)); index=index+1) begin //the activate to activate delay applies to all banks
-        //                 if(delay_before_activate_counter_d[index] <= ACTIVATE_TO_ACTIVATE_DELAY) begin // if delay is > ACTIVATE_TO_ACTIVATE_DELAY, then updating it to the lower delay will cause the previous delay to be violated
-        //                     delay_before_activate_counter_d[index] = ACTIVATE_TO_ACTIVATE_DELAY;
-        //                 end
-        //             end
+                //anticipated bank is idle so do activate
+                else if(!bank_status_q[stage1_next_bank] && delay_before_activate_counter_q[stage1_next_bank] == 0 && !activate_slot_busy) begin 
+                    // must meet TRRD (activate to activate delay)
+                    for(index=0; index < (1<<(BA_BITS+DUAL_RANK_DIMM)); index=index+1) begin //the activate to activate delay applies to all banks
+                        if(delay_before_activate_counter_d[index] <= ACTIVATE_TO_ACTIVATE_DELAY) begin // if delay is > ACTIVATE_TO_ACTIVATE_DELAY, then updating it to the lower delay will cause the previous delay to be violated
+                            delay_before_activate_counter_d[index] = ACTIVATE_TO_ACTIVATE_DELAY;
+                        end
+                    end
 
-        //             delay_before_precharge_counter_d[stage1_next_bank] = ACTIVATE_TO_PRECHARGE_DELAY;
+                    delay_before_precharge_counter_d[stage1_next_bank] = ACTIVATE_TO_PRECHARGE_DELAY;
                     
-        //             //set-up delay before read and write
-        //             if(delay_before_read_counter_d[stage1_next_bank] <= ACTIVATE_TO_READ_DELAY) begin  // if current delay is > ACTIVATE_TO_READ_DELAY, then updating it to the lower delay will cause the previous delay to be violated
-        //                 delay_before_read_counter_d[stage1_next_bank] = ACTIVATE_TO_READ_DELAY;
-        //             end
-        //             if(delay_before_write_counter_d[stage1_next_bank] <= ACTIVATE_TO_WRITE_DELAY) begin  // if current delay is > ACTIVATE_TO_WRITE_DELAY, then updating it to the lower delay will cause the previous delay to be violated
-        //                 delay_before_write_counter_d[stage1_next_bank] = ACTIVATE_TO_WRITE_DELAY;
-        //             end
-        //             if(DUAL_RANK_DIMM[0]) begin
-        //                 cmd_d[ACTIVATE_SLOT] = {!stage1_next_bank[(DUAL_RANK_DIMM[0]? BA_BITS : 0)], stage1_next_bank[(DUAL_RANK_DIMM[0]? BA_BITS : 0)], CMD_ACT[2:0] , cmd_odt, cmd_ck_en, cmd_reset_n, stage1_next_bank[BA_BITS-1:0] , stage1_next_row[(DUAL_RANK_DIMM[0]? ROW_BITS-1 : ROW_BITS-2):0]}; 
-        //             end
-        //             else begin
-        //                 cmd_d[ACTIVATE_SLOT] = {1'b0, CMD_ACT[2:0] , cmd_odt, cmd_ck_en, cmd_reset_n, stage1_next_bank , stage1_next_row};
-        //             end
-        //             bank_status_d[stage1_next_bank] = 1'b1;
-        //             bank_active_row_d[stage1_next_bank] = stage1_next_row;
-        //         end //end of anticipate activate
+                    //set-up delay before read and write
+                    if(delay_before_read_counter_d[stage1_next_bank] <= ACTIVATE_TO_READ_DELAY) begin  // if current delay is > ACTIVATE_TO_READ_DELAY, then updating it to the lower delay will cause the previous delay to be violated
+                        delay_before_read_counter_d[stage1_next_bank] = ACTIVATE_TO_READ_DELAY;
+                    end
+                    if(delay_before_write_counter_d[stage1_next_bank] <= ACTIVATE_TO_WRITE_DELAY) begin  // if current delay is > ACTIVATE_TO_WRITE_DELAY, then updating it to the lower delay will cause the previous delay to be violated
+                        delay_before_write_counter_d[stage1_next_bank] = ACTIVATE_TO_WRITE_DELAY;
+                    end
+                    if(DUAL_RANK_DIMM[0]) begin
+                        cmd_d[ACTIVATE_SLOT] = {!stage1_next_bank[(DUAL_RANK_DIMM[0]? BA_BITS : 0)], stage1_next_bank[(DUAL_RANK_DIMM[0]? BA_BITS : 0)], CMD_ACT[2:0] , cmd_odt, cmd_ck_en, cmd_reset_n, stage1_next_bank[BA_BITS-1:0] , stage1_next_row[(DUAL_RANK_DIMM[0]? ROW_BITS-1 : ROW_BITS-2):0]}; 
+                    end
+                    else begin
+                        cmd_d[ACTIVATE_SLOT] = {1'b0, CMD_ACT[2:0] , cmd_odt, cmd_ck_en, cmd_reset_n, stage1_next_bank , stage1_next_row};
+                    end
+                    bank_status_d[stage1_next_bank] = 1'b1;
+                    bank_active_row_d[stage1_next_bank] = stage1_next_row;
+                end //end of anticipate activate
                 
-        //     end //end of stage1 anticipate
-        // end
+            end //end of stage1 anticipate
+        end
 
         // control stage 1 stall
         if(stage1_pending) begin //raise stall only if stage2 will still be busy next clock
@@ -3071,7 +3074,7 @@ BITSLIP_DQS_TRAIN_3: if(train_delay == 0) begin //train again the ISERDES to cap
                                             write_test_address_counter <= 0;
                                         end
                                         state_calibrate <= BURST_READ;
-                                        `ifdef UART_DEBUG_ALIGN
+                                        `ifdef UART_DEBUG_BIST
                                             uart_start_send <= 1'b1;
                                             uart_text <= {"DONE BURST WRITE (PER BYTE): BIST_MODE=",hex_to_ascii(BIST_MODE),8'h0a};
                                             state_calibrate <= WAIT_UART;
@@ -3094,7 +3097,7 @@ BITSLIP_DQS_TRAIN_3: if(train_delay == 0) begin //train again the ISERDES to cap
                                         write_test_address_counter <= 0;
                                     end
                                     state_calibrate <= BURST_READ;
-                                    `ifdef UART_DEBUG_ALIGN
+                                    `ifdef UART_DEBUG_BIST
                                         uart_start_send <= 1'b1;
                                         uart_text <= {"DONE BURST WRITE (ALL BYTES): BIST_MODE=",hex_to_ascii(BIST_MODE),8'h0a};
                                         state_calibrate <= WAIT_UART;
@@ -3117,7 +3120,7 @@ BITSLIP_DQS_TRAIN_3: if(train_delay == 0) begin //train again the ISERDES to cap
                                     read_test_address_counter <= 0;
                                 end
                                 state_calibrate <= RANDOM_WRITE;
-                                `ifdef UART_DEBUG_ALIGN
+                                `ifdef UART_DEBUG_BIST
                                     uart_start_send <= 1'b1;
                                     uart_text <= {"DONE BURST READ: BIST_MODE=",hex_to_ascii(BIST_MODE),8'h0a};
                                     state_calibrate <= WAIT_UART;
@@ -3145,7 +3148,7 @@ BITSLIP_DQS_TRAIN_3: if(train_delay == 0) begin //train again the ISERDES to cap
                                     write_test_address_counter <= 0;
                                 end
                                 state_calibrate <= RANDOM_READ;
-                                `ifdef UART_DEBUG_ALIGN
+                                `ifdef UART_DEBUG_BIST
                                     uart_start_send <= 1'b1;
                                     uart_text <= {"DONE RANDOM WRITE: BIST_MODE=",hex_to_ascii(BIST_MODE),8'h0a};
                                     state_calibrate <= WAIT_UART;
@@ -3171,7 +3174,7 @@ BITSLIP_DQS_TRAIN_3: if(train_delay == 0) begin //train again the ISERDES to cap
                                 read_test_address_counter <= 0;
                             end
                             state_calibrate <= ALTERNATE_WRITE_READ;
-                            `ifdef UART_DEBUG_ALIGN
+                            `ifdef UART_DEBUG_BIST
                                 uart_start_send <= 1'b1;
                                 uart_text <= {"DONE RANDOM READ: BIST_MODE=",hex_to_ascii(BIST_MODE),8'h0a};
                                 state_calibrate <= WAIT_UART;
@@ -3195,7 +3198,7 @@ ALTERNATE_WRITE_READ: if(!o_wb_stall_calib) begin
                         /* verilator lint_on WIDTHEXPAND */
                             train_delay <= 15;
                             state_calibrate <= FINISH_READ;
-                            `ifdef UART_DEBUG_ALIGN
+                            `ifdef UART_DEBUG_BIST
                                 uart_start_send <= 1'b1;
                                 uart_text <= {"DONE ALTERNATING WRITE-READ",8'h0a};
                                 state_calibrate <= WAIT_UART;
@@ -3219,7 +3222,7 @@ ALTERNATE_WRITE_READ: if(!o_wb_stall_calib) begin
                                 state_calibrate <= DONE_CALIBRATE;
                                 final_calibration_done <= 1'b1;
                             end
-                            `ifdef UART_DEBUG_ALIGN
+                            `ifdef UART_DEBUG_BIST
                                 uart_start_send <= 1'b1;
                                 uart_text <= {"DONE BIST_MODE=",hex_to_ascii(BIST_MODE),", correct_read_data=",
                                     8'h0a, 8'h0a, correct_read_data, 8'h0a, 8'h0a, 8'h0a, 8'h0a
