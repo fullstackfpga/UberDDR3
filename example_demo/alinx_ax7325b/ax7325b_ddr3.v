@@ -164,13 +164,13 @@
 
     // DDR3 Controller 
     ddr3_top #(
-        .CONTROLLER_CLK_PERIOD(8_000), //ps, clock period of the controller interface
-        .DDR3_CLK_PERIOD(2_000), //ps, clock period of the DDR3 RAM device (must be 1/4 of the CONTROLLER_CLK_PERIOD) 
+        .CONTROLLER_CLK_PERIOD(10_000), //ps, clock period of the controller interface
+        .DDR3_CLK_PERIOD(2_500), //ps, clock period of the DDR3 RAM device (must be 1/4 of the CONTROLLER_CLK_PERIOD) 
         .ROW_BITS(15), //width of row address
         .COL_BITS(10), //width of column address
         .BA_BITS(3), //width of bank address
         .BYTE_LANES(2), //number of DDR3 modules to be controlled
-        .AUX_WIDTH(16), //width of aux line (must be >= 4) 
+        .AUX_WIDTH(4), //width of aux line (must be >= 4) 
         .WB2_ADDR_BITS(32), //width of 2nd wishbone address bus 
         .WB2_DATA_BITS(32), //width of 2nd wishbone data bus
         .MICRON_SIM(0), //enable faster simulation for micron ddr3 model (shorten POWER_ON_RESET_HIGH and INITIAL_CKE_LOW)
@@ -178,7 +178,8 @@
         .SECOND_WISHBONE(0), //set to 1 if 2nd wishbone is needed 
         .ECC_ENABLE(0), // set to 1 or 2 to add ECC (1 = Side-band ECC per burst, 2 = Side-band ECC per 8 bursts , 3 = Inline ECC ) 
         .WB_ERROR(0), // set to 1 to support Wishbone error (asserts at ECC double bit error)
-        .BIST_MODE(1)
+        .BIST_MODE(1), // 0 = No BIST, 1 = run through all address space ONCE , 2 = run through all address space for every test (burst w/r, random w/r, alternating r/w)
+        .SPEED_BIN(1) // 0 = Use top-level parameters , 1 = DDR3-1066 (7-7-7) , 2 = DR3-1333 (9-9-9) , 3 = DDR3-1600 (11-11-11)
         ) ddr3_top
         (
             //clock and reset
@@ -217,7 +218,7 @@
             .o_ddr3_clk_n(ddr3_ck_n),
             .o_ddr3_reset_n(ddr3_reset_n),
             .o_ddr3_cke(ddr3_cke), // CKE
-            .o_ddr3_cs_n(ddr3_cs_n[0]), // chip select signal (controls rank 1 only)
+            .o_ddr3_cs_n(ddr3_cs_n), // chip select signal (controls rank 1 only)
             .o_ddr3_ras_n(ddr3_ras_n), // RAS#
             .o_ddr3_cas_n(ddr3_cas_n), // CAS#
             .o_ddr3_we_n(ddr3_we_n), // WE#

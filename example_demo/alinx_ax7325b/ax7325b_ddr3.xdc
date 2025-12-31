@@ -632,25 +632,25 @@ set_property PACKAGE_PIN AD4 [get_ports {ddr3_dm[7]}]
 # PadFunction: IO_L15P_T2_DQS_32 
 set_property VCCAUX_IO HIGH [get_ports {ddr3_dqs_p[0]}]
 set_property SLEW FAST [get_ports {ddr3_dqs_p[0]}]
-set_property IOSTANDARD SSTL15 [get_ports {ddr3_dqs_p[0]}]
+set_property IOSTANDARD DIFF_SSTL15 [get_ports {ddr3_dqs_p[0]}]
 set_property PACKAGE_PIN Y19 [get_ports {ddr3_dqs_p[0]}]
 
 # PadFunction: IO_L15N_T2_DQS_32 
 set_property VCCAUX_IO HIGH [get_ports {ddr3_dqs_n[0]}]
 set_property SLEW FAST [get_ports {ddr3_dqs_n[0]}]
-set_property IOSTANDARD SSTL15 [get_ports {ddr3_dqs_n[0]}]
+set_property IOSTANDARD DIFF_SSTL15 [get_ports {ddr3_dqs_n[0]}]
 set_property PACKAGE_PIN Y18 [get_ports {ddr3_dqs_n[0]}]
 
 # PadFunction: IO_L9P_T1_DQS_32 
 set_property VCCAUX_IO HIGH [get_ports {ddr3_dqs_p[1]}]
 set_property SLEW FAST [get_ports {ddr3_dqs_p[1]}]
-set_property IOSTANDARD SSTL15 [get_ports {ddr3_dqs_p[1]}]
+set_property IOSTANDARD DIFF_SSTL15 [get_ports {ddr3_dqs_p[1]}]
 set_property PACKAGE_PIN AJ18 [get_ports {ddr3_dqs_p[1]}]
 
 # PadFunction: IO_L9N_T1_DQS_32 
 set_property VCCAUX_IO HIGH [get_ports {ddr3_dqs_n[1]}]
 set_property SLEW FAST [get_ports {ddr3_dqs_n[1]}]
-set_property IOSTANDARD SSTL15 [get_ports {ddr3_dqs_n[1]}]
+set_property IOSTANDARD DIFF_SSTL15 [get_ports {ddr3_dqs_n[1]}]
 set_property PACKAGE_PIN AK18 [get_ports {ddr3_dqs_n[1]}]
 
 # PadFunction: IO_L3P_T0_DQS_32 
