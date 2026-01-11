@@ -20,6 +20,8 @@ example_demo/build_logs*
 testbench/ddr3_dimm_micron_sim_behav.wcfg
 testbench/icarus_sim/*.log
 testbench/icarus_sim/uberddr3_sim
+*jobid
+.caas*
 
 # But do not ignore testbench/xsim/test_*.log
 !testbench/xsim/test_*.log
