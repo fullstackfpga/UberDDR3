@@ -651,6 +651,19 @@ module ddr3_controller #(
     reg[wb_data_bits-1:0] wrong_data = 0, expected_data=0;
     wire[wb_data_bits-1:0] correct_data;
     reg[LANES-1:0] late_dq;
+    reg stage2_do_wr_or_rd, stage2_do_wr_or_rd_d;
+    reg stage2_do_wr, stage2_do_wr_d;
+    reg stage2_do_update_delay_before_precharge_after_wr, stage2_do_update_delay_before_precharge_after_wr_d;
+    reg stage2_do_rd, stage2_do_rd_d;
+    reg stage2_do_update_delay_before_precharge_after_rd, stage2_do_update_delay_before_precharge_after_rd_d;
+    reg stage2_do_act, stage2_do_act_d;
+    reg stage2_do_update_delay_before_read_after_act, stage2_do_update_delay_before_read_after_act_d;
+    reg stage2_do_update_delay_before_write_after_act, stage2_do_update_delay_before_write_after_act_d;
+    reg stage2_do_pre, stage2_do_pre_d; 
+    reg stage1_do_pre, stage1_do_pre_d;
+    reg stage1_do_act, stage1_do_act_d;
+    reg force_o_wb_stall_high_q, force_o_wb_stall_high_d;
+    reg force_o_wb_stall_calib_high_q, force_o_wb_stall_calib_high_d;
     // initial block for all regs
     initial begin
         o_wb_stall = 1;
@@ -1432,6 +1445,57 @@ module ddr3_controller #(
             late_dq[index] = (lane_write_dq_late[index] && (data_start_index[index] != 0)) && (STAGE2_DATA_DEPTH > 1);
         end
     end
+    
+    // Logic for registering the conditions used for the 2-stage pipeline logic
+    // to cut the timing path and achieve higher max frequnecy
+    always @(posedge i_controller_clk) begin
+        if(sync_rst_controller) begin
+            stage2_do_wr_or_rd <= 0;
+            stage2_do_wr <= 0;
+            stage2_do_update_delay_before_precharge_after_wr <= 0;
+            stage2_do_rd <= 0;
+            stage2_do_update_delay_before_precharge_after_rd <= 0;
+            stage2_do_act <= 0;
+            stage2_do_update_delay_before_read_after_act <= 0;
+            stage2_do_update_delay_before_write_after_act <= 0;
+            stage2_do_pre <= 0;
+
+            stage1_do_pre <= 0;
+            stage1_do_act <= 0;
+        end
+        else begin
+            // stage 2 conditions
+            stage2_do_wr_or_rd <= stage2_do_wr_or_rd_d;
+            stage2_do_wr <= stage2_do_wr_d;
+            stage2_do_update_delay_before_precharge_after_wr <= stage2_do_update_delay_before_precharge_after_wr_d;
+            stage2_do_rd <= stage2_do_rd_d;
+            stage2_do_update_delay_before_precharge_after_rd <= stage2_do_update_delay_before_precharge_after_rd_d;
+            stage2_do_act <= stage2_do_act_d;
+            stage2_do_update_delay_before_read_after_act <= stage2_do_update_delay_before_read_after_act_d;
+            stage2_do_update_delay_before_write_after_act <= stage2_do_update_delay_before_write_after_act_d;
+            stage2_do_pre <= stage2_do_pre_d;
+            // stage 1 conditions
+            stage1_do_pre <= stage1_do_pre_d;
+            stage1_do_act <= stage1_do_act_d;
+        end
+    end
+
+    always @* begin
+        // stage 2 conditions
+        stage2_do_wr_or_rd_d = bank_status_d[stage2_bank_d] &&  bank_active_row_d[stage2_bank_d] == stage2_row_d; 
+        stage2_do_wr_d = stage2_we_d && delay_before_write_counter_d[stage2_bank_d] == 0;
+        stage2_do_update_delay_before_precharge_after_wr_d = delay_before_precharge_counter_d[stage2_bank_d] <= WRITE_TO_PRECHARGE_DELAY;
+        stage2_do_rd_d = !stage2_we_d && delay_before_read_counter_d[stage2_bank_d] == 0;
+        stage2_do_update_delay_before_precharge_after_rd_d = delay_before_precharge_counter_d[stage2_bank_d] <= READ_TO_PRECHARGE_DELAY;
+        stage2_do_act_d = !bank_status_d[stage2_bank_d] && delay_before_activate_counter_d[stage2_bank_d] == 0;
+        stage2_do_update_delay_before_read_after_act_d = delay_before_read_counter_d[stage2_bank_d] <= ACTIVATE_TO_READ_DELAY;
+        stage2_do_update_delay_before_write_after_act_d = delay_before_write_counter_d[stage2_bank_d] <= ACTIVATE_TO_WRITE_DELAY;
+        stage2_do_pre_d = bank_status_d[stage2_bank_d] &&  bank_active_row_d[stage2_bank_d] != stage2_row_d &&  delay_before_precharge_counter_d[stage2_bank_d] == 0 ;
+        // stage 2 conditions
+        stage1_do_pre_d = bank_status_d[stage1_next_bank_d] &&  bank_active_row_d[stage1_next_bank_d] != stage1_next_row_d && delay_before_precharge_counter_d[stage1_next_bank_d] == 0;
+        stage1_do_act_d = !bank_status_d[stage1_next_bank_d] && delay_before_activate_counter_d[stage1_next_bank_d] == 0;
+    end
+
 
     // generate signals to be received by stage1
     generate
@@ -1710,9 +1774,9 @@ module ddr3_controller #(
             stage2_update = 0;
 
             //right row is already active so go straight to read/write
-            if(bank_status_q[stage2_bank] &&  bank_active_row_q[stage2_bank] == stage2_row) begin //read/write operation
+            if(stage2_do_wr_or_rd) begin //read/write operation
                 //write request
-                if(stage2_we && delay_before_write_counter_q[stage2_bank] == 0) begin       
+                if(stage2_do_wr) begin       
                     stage2_stall = 0;
                     ecc_stage2_stall = 0;
                     stage2_update = 1;
@@ -1736,7 +1800,7 @@ module ddr3_controller #(
                     // where the transaction can continue regardless when ack returns
                     
                     //set-up delay before precharge, read, and write
-                    if(delay_before_precharge_counter_q[stage2_bank] <= WRITE_TO_PRECHARGE_DELAY) begin
+                    if(stage2_do_update_delay_before_precharge_after_wr) begin
                         //it is possible that the delay_before_precharge is
                         //set to tRAS (activate to precharge delay). And if we
                         //overwrite delay_before_precharge, we might overwrite
@@ -1802,13 +1866,13 @@ module ddr3_controller #(
                 end
                 
                 //read request
-                else if(!stage2_we && delay_before_read_counter_q[stage2_bank]==0) begin     
+                else if(stage2_do_rd) begin     
                     stage2_stall = 0;
                     ecc_stage2_stall = 0;
                     stage2_update = 1;
                     cmd_odt = 1'b0;
                     //set-up delay before precharge, read, and write
-                    if(delay_before_precharge_counter_q[stage2_bank] <= READ_TO_PRECHARGE_DELAY) begin
+                    if(stage2_do_update_delay_before_precharge_after_rd) begin
                         delay_before_precharge_counter_d[stage2_bank] = READ_TO_PRECHARGE_DELAY;
                     end
                     delay_before_read_counter_d[stage2_bank] = READ_TO_READ_DELAY;     
@@ -1848,7 +1912,7 @@ module ddr3_controller #(
             end
             
             //bank is idle so activate it
-            else if(!bank_status_q[stage2_bank] && delay_before_activate_counter_q[stage2_bank] == 0) begin 
+            else if(stage2_do_act) begin 
                 activate_slot_busy = 1'b1;
                 // must meet TRRD (activate to activate delay)
                 for(index=0; index < (1<<(BA_BITS+DUAL_RANK_DIMM)); index=index+1) begin //the activate to activate delay applies to all banks
@@ -1860,10 +1924,10 @@ module ddr3_controller #(
                 delay_before_precharge_counter_d[stage2_bank] = ACTIVATE_TO_PRECHARGE_DELAY;
 
                 //set-up delay before read and write
-                if(delay_before_read_counter_q[stage2_bank] <= ACTIVATE_TO_READ_DELAY) begin // if current delay is > ACTIVATE_TO_READ_DELAY, then updating it to the lower delay will cause the previous delay to be violated
+                if(stage2_do_update_delay_before_read_after_act) begin // if current delay is > ACTIVATE_TO_READ_DELAY, then updating it to the lower delay will cause the previous delay to be violated
                     delay_before_read_counter_d[stage2_bank] = ACTIVATE_TO_READ_DELAY;
                 end
-                if(delay_before_write_counter_q[stage2_bank] <= ACTIVATE_TO_WRITE_DELAY) begin // if current delay is > ACTIVATE_TO_WRITE_DELAY, then updating it to the lower delay will cause the previous delay to be violated
+                if(stage2_do_update_delay_before_write_after_act) begin // if current delay is > ACTIVATE_TO_WRITE_DELAY, then updating it to the lower delay will cause the previous delay to be violated
                     delay_before_write_counter_d[stage2_bank] = ACTIVATE_TO_WRITE_DELAY;
                 end
                 //issue activate command
@@ -1878,7 +1942,7 @@ module ddr3_controller #(
                 bank_active_row_d[stage2_bank] = stage2_row;
             end
             //bank is not idle but wrong row is activated so do precharge
-            else if(bank_status_q[stage2_bank] &&  bank_active_row_q[stage2_bank] != stage2_row &&  delay_before_precharge_counter_q[stage2_bank] ==0) begin       
+            else if(stage2_do_pre) begin       
                 precharge_slot_busy = 1'b1;
                 //set-up delay before activate
                 delay_before_activate_counter_d[stage2_bank] = PRECHARGE_TO_ACTIVATE_DELAY;
@@ -1910,7 +1974,7 @@ module ddr3_controller #(
                 //issue Activate and Precharge on the CURRENT bank. Else, stage
                 //1 will issue Activate and Precharge for the NEXT bank
                 // Thus stage 1 anticipate makes sure smooth burst operation that jumps banks
-                if(bank_status_q[stage1_next_bank] &&  bank_active_row_q[stage1_next_bank] != stage1_next_row && delay_before_precharge_counter_q[stage1_next_bank] ==0 && !precharge_slot_busy) begin    
+                if(stage1_do_pre && !precharge_slot_busy) begin    
                     //set-up delay before read and write
                     delay_before_activate_counter_d[stage1_next_bank] = PRECHARGE_TO_ACTIVATE_DELAY;
                     if(DUAL_RANK_DIMM[0]) begin
@@ -1923,7 +1987,7 @@ module ddr3_controller #(
                 end //end of anticipate precharge
                 
                 //anticipated bank is idle so do activate
-                else if(!bank_status_q[stage1_next_bank] && delay_before_activate_counter_q[stage1_next_bank] == 0 && !activate_slot_busy) begin 
+                else if(stage1_do_act && !activate_slot_busy) begin 
                     // must meet TRRD (activate to activate delay)
                     for(index=0; index < (1<<(BA_BITS+DUAL_RANK_DIMM)); index=index+1) begin //the activate to activate delay applies to all banks
                         if(delay_before_activate_counter_d[index] <= ACTIVATE_TO_ACTIVATE_DELAY) begin // if delay is > ACTIVATE_TO_ACTIVATE_DELAY, then updating it to the lower delay will cause the previous delay to be violated
