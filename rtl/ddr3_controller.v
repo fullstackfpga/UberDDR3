@@ -50,6 +50,7 @@
 // `define UART_DEBUG_READ_LEVEL
 // `define UART_DEBUG_WRITE_LEVEL
 // `define UART_DEBUG_ALIGN
+// `define UART_DEBUG_BIST
 
 
 `ifdef UART_DEBUG_READ_LEVEL
@@ -57,6 +58,8 @@
 `elsif UART_DEBUG_WRITE_LEVEL
     `define UART_DEBUG
 `elsif UART_DEBUG_ALIGN
+    `define UART_DEBUG
+`elsif UART_DEBUG_BIST
     `define UART_DEBUG
 `endif
 
@@ -295,6 +298,12 @@ module ddr3_controller #(
     localparam[3:0] WRITE_TO_WRITE_DELAY = 0;
     localparam[3:0] WRITE_TO_READ_DELAY = find_delay((CWL_nCK + 4 + ps_to_nCK(tWTR)), WRITE_SLOT, READ_SLOT); //4
     localparam[3:0] WRITE_TO_PRECHARGE_DELAY = find_delay((CWL_nCK + 4 + ps_to_nCK(tWR)), WRITE_SLOT, PRECHARGE_SLOT); //5
+    // determines bitwidth of delay counters
+    localparam MAX_DELAY_BEFORE_PRECHARGE = max(ACTIVATE_TO_PRECHARGE_DELAY, max(WRITE_TO_PRECHARGE_DELAY, READ_TO_PRECHARGE_DELAY));
+    localparam MAX_DELAY_BEFORE_ACTIVATE = max(PRECHARGE_TO_ACTIVATE_DELAY, ACTIVATE_TO_ACTIVATE_DELAY);
+    localparam MAX_DELAY_BEFORE_WRITE = max(ACTIVATE_TO_WRITE_DELAY, max(READ_TO_WRITE_DELAY + 'd1, WRITE_TO_WRITE_DELAY));
+    localparam MAX_DELAY_BEFORE_READ = max(ACTIVATE_TO_READ_DELAY, max(WRITE_TO_READ_DELAY + 'd1, READ_TO_READ_DELAY));
+
     /* verilator lint_on WIDTHEXPAND */
     localparam PRE_REFRESH_DELAY = WRITE_TO_PRECHARGE_DELAY + 1; 
     `ifdef FORMAL 
@@ -338,7 +347,7 @@ module ddr3_controller #(
      //the delays included the ODELAY and OSERDES when issuing the read command
      //and the IDELAY and ISERDES when receiving the data  (NOTE TO SELF: ELABORATE ON WHY THOSE MAGIC NUMBERS)
     localparam READ_ACK_PIPE_WIDTH = READ_DELAY + 1 + 2 + 1 + 1 + (DLL_OFF? 2 : 0); // FOr DLL_OFF, phy has no delay thus add delay here       
-    localparam MAX_ADDED_READ_ACK_DELAY = 16;
+    localparam MAX_ADDED_READ_ACK_DELAY = 2;
     localparam DELAY_BEFORE_WRITE_LEVEL_FEEDBACK = STAGE2_DATA_DEPTH + ps_to_cycles(tWLO+tWLOE) + 10;  
     //plus 10 controller clocks for possible bus latency and the delay for receiving feedback DQ from IOBUF -> IDELAY -> ISERDES
     localparam ECC_INFORMATION_BITS = (ECC_ENABLE == 2)? max_information_bits(wb_data_bits) : max_information_bits(wb_data_bits/8);
@@ -506,10 +515,10 @@ module ddr3_controller #(
     reg[ROW_BITS-1:0] stage2_row = 0, stage2_row_d;
     
     //delay counter for every banks
-    reg[3:0] delay_before_precharge_counter_q[(1<<(BA_BITS+DUAL_RANK_DIMM))-1:0], delay_before_precharge_counter_d[(1<<(BA_BITS+DUAL_RANK_DIMM))-1:0]; //delay counters
-    reg[3:0] delay_before_activate_counter_q[(1<<(BA_BITS+DUAL_RANK_DIMM))-1:0], delay_before_activate_counter_d[(1<<(BA_BITS+DUAL_RANK_DIMM))-1:0] ;
-    reg[3:0] delay_before_write_counter_q[(1<<(BA_BITS+DUAL_RANK_DIMM))-1:0], delay_before_write_counter_d[(1<<(BA_BITS+DUAL_RANK_DIMM))-1:0] ;
-    reg[3:0] delay_before_read_counter_q[(1<<(BA_BITS+DUAL_RANK_DIMM))-1:0] , delay_before_read_counter_d[(1<<(BA_BITS+DUAL_RANK_DIMM))-1:0] ;
+    reg[$clog2(MAX_DELAY_BEFORE_PRECHARGE):0] delay_before_precharge_counter_q[(1<<(BA_BITS+DUAL_RANK_DIMM))-1:0], delay_before_precharge_counter_d[(1<<(BA_BITS+DUAL_RANK_DIMM))-1:0]; //delay counters
+    reg[$clog2(MAX_DELAY_BEFORE_ACTIVATE):0] delay_before_activate_counter_q[(1<<(BA_BITS+DUAL_RANK_DIMM))-1:0], delay_before_activate_counter_d[(1<<(BA_BITS+DUAL_RANK_DIMM))-1:0] ;
+    reg[$clog2(MAX_DELAY_BEFORE_WRITE):0] delay_before_write_counter_q[(1<<(BA_BITS+DUAL_RANK_DIMM))-1:0], delay_before_write_counter_d[(1<<(BA_BITS+DUAL_RANK_DIMM))-1:0] ;
+    reg[$clog2(MAX_DELAY_BEFORE_READ):0] delay_before_read_counter_q[(1<<(BA_BITS+DUAL_RANK_DIMM))-1:0] , delay_before_read_counter_d[(1<<(BA_BITS+DUAL_RANK_DIMM))-1:0] ;
     
     //commands to be sent to PHY (4 slots per controller clk cycle)
     reg[cmd_len-1:0] cmd_d[3:0];
@@ -548,8 +557,8 @@ module ddr3_controller #(
     /* verilator lint_off UNUSEDSIGNAL */
     reg[15:0] dqs_bitslip_arrangement = 0;
     /* verilator lint_off UNUSEDSIGNAL */
-    reg[3:0] added_read_pipe_max = 0;
-    reg[3:0] added_read_pipe[LANES - 1:0]; 
+    reg added_read_pipe_max = 0;
+    reg added_read_pipe[LANES - 1:0]; 
     //each lane will have added delay relative to when ISERDES should actually return the data
     //this make sure that we will wait until the lane with longest delay (added_read_pipe_max) is received before
     //all lanes are sent to wishbone data
@@ -560,7 +569,7 @@ module ddr3_controller #(
     reg[$clog2(READ_ACK_PIPE_WIDTH-1):0] write_ack_index_q = 1, write_ack_index_d = 1;
     reg index_read_pipe; //tells which delay_read_pipe will be updated (there are two delay_read_pipe)
     reg index_wb_data; //tells which o_wb_data_q will be sent to o_wb_data
-    reg[15:0] delay_read_pipe[1:0]; //delay when each lane will retrieve i_phy_iserdes_data (since different lanes might not be aligned with each other and needs to be retrieved at a different time)
+    reg[1:0] delay_read_pipe[1:0]; //delay when each lane will retrieve i_phy_iserdes_data (since different lanes might not be aligned with each other and needs to be retrieved at a different time)
     reg[wb_data_bits - 1:0] o_wb_data_q[1:0]; //store data retrieved from i_phy_iserdes_data to be sent to o_wb_data
     wire[wb_data_bits - 1:0] o_wb_data_q_current;
     reg[wb_data_bits - 1:0] o_wb_data_q_q;
@@ -1478,12 +1487,12 @@ module ddr3_controller #(
         // stage 2 conditions
         stage2_do_wr_or_rd_d = bank_status_d[stage2_bank_d] &&  bank_active_row_d[stage2_bank_d] == stage2_row_d; 
         stage2_do_wr_d = stage2_we_d && delay_before_write_counter_d[stage2_bank_d] == 0;
-        stage2_do_update_delay_before_precharge_after_wr_d = delay_before_precharge_counter_d[stage2_bank_d] <= WRITE_TO_PRECHARGE_DELAY;
+        stage2_do_update_delay_before_precharge_after_wr_d = delay_before_precharge_counter_d[stage2_bank_d] <= WRITE_TO_PRECHARGE_DELAY[$clog2(MAX_DELAY_BEFORE_PRECHARGE):0];
         stage2_do_rd_d = !stage2_we_d && delay_before_read_counter_d[stage2_bank_d] == 0;
-        stage2_do_update_delay_before_precharge_after_rd_d = delay_before_precharge_counter_d[stage2_bank_d] <= READ_TO_PRECHARGE_DELAY;
+        stage2_do_update_delay_before_precharge_after_rd_d = delay_before_precharge_counter_d[stage2_bank_d] <= READ_TO_PRECHARGE_DELAY[$clog2(MAX_DELAY_BEFORE_PRECHARGE):0];
         stage2_do_act_d = !bank_status_d[stage2_bank_d] && delay_before_activate_counter_d[stage2_bank_d] == 0;
-        stage2_do_update_delay_before_read_after_act_d = delay_before_read_counter_d[stage2_bank_d] <= ACTIVATE_TO_READ_DELAY;
-        stage2_do_update_delay_before_write_after_act_d = delay_before_write_counter_d[stage2_bank_d] <= ACTIVATE_TO_WRITE_DELAY;
+        stage2_do_update_delay_before_read_after_act_d = delay_before_read_counter_d[stage2_bank_d] <= ACTIVATE_TO_READ_DELAY[$clog2(MAX_DELAY_BEFORE_READ):0];
+        stage2_do_update_delay_before_write_after_act_d = delay_before_write_counter_d[stage2_bank_d] <= ACTIVATE_TO_WRITE_DELAY[$clog2(MAX_DELAY_BEFORE_WRITE):0];
         stage2_do_pre_d = bank_status_d[stage2_bank_d] &&  bank_active_row_d[stage2_bank_d] != stage2_row_d &&  delay_before_precharge_counter_d[stage2_bank_d] == 0 ;
         // stage 2 conditions
         stage1_do_pre_d = bank_status_d[stage1_next_bank_d] &&  bank_active_row_d[stage1_next_bank_d] != stage1_next_row_d && delay_before_precharge_counter_d[stage1_next_bank_d] == 0;
@@ -1500,7 +1509,7 @@ module ddr3_controller #(
             // AND ecc_stage1_stall low (if high then stage2 will have ECC operation while stage1 remains)
             assign stage0_update = ((i_wb_cyc && !o_wb_stall) || (!final_calibration_done && !o_wb_stall_calib)) && ecc_stage1_stall; // stage0 is only used when ECC will be inserted next cycle (stage1 must remain)
             assign stage1_update = ( (i_wb_cyc && !o_wb_stall) || (stage0_pending && !ecc_stage2_stall) ) && !ecc_stage1_stall;
-            assign stage1_update_calib = ( ((state_calibrate != DONE_CALIBRATE) && !o_wb_stall_calib) || (stage0_pending && !ecc_stage2_stall) ) && !ecc_stage1_stall;
+            assign stage1_update_calib = ( ((!final_calibration_done) && !o_wb_stall_calib) || (stage0_pending && !ecc_stage2_stall) ) && !ecc_stage1_stall;
             /* verilator lint_off WIDTH */
             assign wb_addr_plus_anticipate = wb_addr_mux + MARGIN_BEFORE_ANTICIPATE; // wb_addr_plus_anticipate determines if it is near the end of column by checking if it jumps to next row
             assign calib_addr_plus_anticipate = calib_addr_mux + MARGIN_BEFORE_ANTICIPATE; // just same as wb_addr_plus_anticipate but while doing calibration
@@ -1769,7 +1778,7 @@ module ddr3_controller #(
             if(stage2_do_pre) begin       
                 precharge_slot_busy = 1'b1;
                 //set-up delay before activate
-                delay_before_activate_counter_d[stage2_bank] = PRECHARGE_TO_ACTIVATE_DELAY;
+                delay_before_activate_counter_d[stage2_bank] = PRECHARGE_TO_ACTIVATE_DELAY[$clog2(MAX_DELAY_BEFORE_ACTIVATE):0];
                 //issue precharge command
                 if(DUAL_RANK_DIMM[0]) begin
                     cmd_d[PRECHARGE_SLOT] = {!stage2_bank[(DUAL_RANK_DIMM[0]? BA_BITS : 0)], stage2_bank[(DUAL_RANK_DIMM[0]? BA_BITS : 0)], CMD_PRE[2:0], cmd_odt, cmd_ck_en, cmd_reset_n, stage2_bank[BA_BITS-1:0], { {{ROW_BITS-32'd11}{1'b0}} , 1'b0 , stage2_row[DUAL_RANK_DIMM[0]? 9 : 8:0] } };
@@ -1786,19 +1795,19 @@ module ddr3_controller #(
                 activate_slot_busy = 1'b1;
                 // must meet TRRD (activate to activate delay)
                 for(index=0; index < (1<<(BA_BITS+DUAL_RANK_DIMM)); index=index+1) begin //the activate to activate delay applies to all banks
-                    if(delay_before_activate_counter_q[index] <= ACTIVATE_TO_ACTIVATE_DELAY) begin // if delay is > ACTIVATE_TO_ACTIVATE_DELAY, then updating it to the lower delay will cause the previous delay to be violated
-                        delay_before_activate_counter_d[index] = ACTIVATE_TO_ACTIVATE_DELAY;
+                    if(delay_before_activate_counter_q[index] <= ACTIVATE_TO_ACTIVATE_DELAY[$clog2(MAX_DELAY_BEFORE_ACTIVATE):0]) begin // if delay is > ACTIVATE_TO_ACTIVATE_DELAY, then updating it to the lower delay will cause the previous delay to be violated
+                        delay_before_activate_counter_d[index] = ACTIVATE_TO_ACTIVATE_DELAY[$clog2(MAX_DELAY_BEFORE_ACTIVATE):0];
                     end
                 end
 
-                delay_before_precharge_counter_d[stage2_bank] = ACTIVATE_TO_PRECHARGE_DELAY;
+                delay_before_precharge_counter_d[stage2_bank] = ACTIVATE_TO_PRECHARGE_DELAY[$clog2(MAX_DELAY_BEFORE_PRECHARGE):0];
 
                 //set-up delay before read and write
                 if(stage2_do_update_delay_before_read_after_act) begin // if current delay is > ACTIVATE_TO_READ_DELAY, then updating it to the lower delay will cause the previous delay to be violated
-                    delay_before_read_counter_d[stage2_bank] = ACTIVATE_TO_READ_DELAY;
+                    delay_before_read_counter_d[stage2_bank] = ACTIVATE_TO_READ_DELAY[$clog2(MAX_DELAY_BEFORE_READ):0];
                 end
                 if(stage2_do_update_delay_before_write_after_act) begin // if current delay is > ACTIVATE_TO_WRITE_DELAY, then updating it to the lower delay will cause the previous delay to be violated
-                    delay_before_write_counter_d[stage2_bank] = ACTIVATE_TO_WRITE_DELAY;
+                    delay_before_write_counter_d[stage2_bank] = ACTIVATE_TO_WRITE_DELAY[$clog2(MAX_DELAY_BEFORE_WRITE):0];
                 end
                 //issue activate command
                 if(DUAL_RANK_DIMM[0]) begin
@@ -1846,12 +1855,12 @@ module ddr3_controller #(
                         //tRAS requirement. Thus, we must first check if the
                         //delay_before_precharge is set to a value not more
                         //than the WRITE_TO_PRECHARGE_DELAY
-                        delay_before_precharge_counter_d[stage2_bank] = WRITE_TO_PRECHARGE_DELAY;
+                        delay_before_precharge_counter_d[stage2_bank] = WRITE_TO_PRECHARGE_DELAY[$clog2(MAX_DELAY_BEFORE_PRECHARGE):0];
                     end
                     for(index=0; index < (1<<(BA_BITS+DUAL_RANK_DIMM)); index=index+1) begin //the write to read delay applies to all banks (odt must be turned off properly before reading)
-                        delay_before_read_counter_d[index] = WRITE_TO_READ_DELAY + 1; //NOTE TO SELF: why plus 1?
+                        delay_before_read_counter_d[index] = WRITE_TO_READ_DELAY[$clog2(MAX_DELAY_BEFORE_READ):0] + 'd1; //NOTE TO SELF: why plus 1?
                     end
-                    delay_before_write_counter_d[stage2_bank] = WRITE_TO_WRITE_DELAY;
+                    delay_before_write_counter_d[stage2_bank] = WRITE_TO_WRITE_DELAY[$clog2(MAX_DELAY_BEFORE_WRITE):0];
                     //issue read command
                     if(DUAL_RANK_DIMM[0]) begin
                         if(COL_BITS <= 10) begin
@@ -1910,12 +1919,11 @@ module ddr3_controller #(
                     cmd_odt = 1'b0;
                     //set-up delay before precharge, read, and write
                     if(stage2_do_update_delay_before_precharge_after_rd) begin
-                        delay_before_precharge_counter_d[stage2_bank] = READ_TO_PRECHARGE_DELAY;
+                        delay_before_precharge_counter_d[stage2_bank] = READ_TO_PRECHARGE_DELAY[$clog2(MAX_DELAY_BEFORE_PRECHARGE):0];
                     end
-                    delay_before_read_counter_d[stage2_bank] = READ_TO_READ_DELAY;     
-                    delay_before_write_counter_d[stage2_bank] = READ_TO_WRITE_DELAY + 1; //temporary solution since its possible odt to go high already while reading previously
+                    delay_before_read_counter_d[stage2_bank] = READ_TO_READ_DELAY[$clog2(MAX_DELAY_BEFORE_READ):0];     
                     for(index=0; index < (1<<(BA_BITS+DUAL_RANK_DIMM)); index=index+1) begin //the read to write delay applies to all banks (odt must be turned on properly before writing and this delay is for ODT to settle)
-                        delay_before_write_counter_d[index] = READ_TO_WRITE_DELAY + 1; // NOTE TO SELF: why plus 1?
+                        delay_before_write_counter_d[index] = READ_TO_WRITE_DELAY[$clog2(MAX_DELAY_BEFORE_WRITE):0] + 'd1; // NOTE TO SELF: why plus 1? temporary solution since its possible odt to go high already while reading previously
                     end
                     // don't acknowledge if ECC request
                     // higher shift_read_pipe means the earlier it will check data received from i_phy_iserdes_data
@@ -1967,7 +1975,7 @@ module ddr3_controller #(
                 // Thus stage 1 anticipate makes sure smooth burst operation that jumps banks
                 if(stage1_do_pre && !precharge_slot_busy) begin    
                     //set-up delay before read and write
-                    delay_before_activate_counter_d[stage1_next_bank] = PRECHARGE_TO_ACTIVATE_DELAY;
+                    delay_before_activate_counter_d[stage1_next_bank] = PRECHARGE_TO_ACTIVATE_DELAY[$clog2(MAX_DELAY_BEFORE_ACTIVATE):0];
                     if(DUAL_RANK_DIMM[0]) begin
                         cmd_d[PRECHARGE_SLOT] = {!stage1_next_bank[(DUAL_RANK_DIMM[0]? BA_BITS : 0)], stage1_next_bank[(DUAL_RANK_DIMM[0]? BA_BITS : 0)], CMD_PRE[2:0], cmd_odt, cmd_ck_en, cmd_reset_n, stage1_next_bank[BA_BITS-1:0], { {{ROW_BITS-32'd11}{1'b0}} , 1'b0 , stage1_next_row[(DUAL_RANK_DIMM[0]? 9 : 8):0] } };
                     end
@@ -1981,19 +1989,19 @@ module ddr3_controller #(
                 else if(stage1_do_act && !activate_slot_busy) begin 
                     // must meet TRRD (activate to activate delay)
                     for(index=0; index < (1<<(BA_BITS+DUAL_RANK_DIMM)); index=index+1) begin //the activate to activate delay applies to all banks
-                        if(delay_before_activate_counter_d[index] <= ACTIVATE_TO_ACTIVATE_DELAY) begin // if delay is > ACTIVATE_TO_ACTIVATE_DELAY, then updating it to the lower delay will cause the previous delay to be violated
-                            delay_before_activate_counter_d[index] = ACTIVATE_TO_ACTIVATE_DELAY;
+                        if(delay_before_activate_counter_d[index] <= ACTIVATE_TO_ACTIVATE_DELAY[$clog2(MAX_DELAY_BEFORE_ACTIVATE):0]) begin // if delay is > ACTIVATE_TO_ACTIVATE_DELAY, then updating it to the lower delay will cause the previous delay to be violated
+                            delay_before_activate_counter_d[index] = ACTIVATE_TO_ACTIVATE_DELAY[$clog2(MAX_DELAY_BEFORE_ACTIVATE):0];
                         end
                     end
 
-                    delay_before_precharge_counter_d[stage1_next_bank] = ACTIVATE_TO_PRECHARGE_DELAY;
+                    delay_before_precharge_counter_d[stage1_next_bank] = ACTIVATE_TO_PRECHARGE_DELAY[$clog2(MAX_DELAY_BEFORE_PRECHARGE):0];
                     
                     //set-up delay before read and write
-                    if(delay_before_read_counter_d[stage1_next_bank] <= ACTIVATE_TO_READ_DELAY) begin  // if current delay is > ACTIVATE_TO_READ_DELAY, then updating it to the lower delay will cause the previous delay to be violated
-                        delay_before_read_counter_d[stage1_next_bank] = ACTIVATE_TO_READ_DELAY;
+                    if(delay_before_read_counter_d[stage1_next_bank] <= ACTIVATE_TO_READ_DELAY[$clog2(MAX_DELAY_BEFORE_READ):0]) begin  // if current delay is > ACTIVATE_TO_READ_DELAY, then updating it to the lower delay will cause the previous delay to be violated
+                        delay_before_read_counter_d[stage1_next_bank] = ACTIVATE_TO_READ_DELAY[$clog2(MAX_DELAY_BEFORE_READ):0];
                     end
-                    if(delay_before_write_counter_d[stage1_next_bank] <= ACTIVATE_TO_WRITE_DELAY) begin  // if current delay is > ACTIVATE_TO_WRITE_DELAY, then updating it to the lower delay will cause the previous delay to be violated
-                        delay_before_write_counter_d[stage1_next_bank] = ACTIVATE_TO_WRITE_DELAY;
+                    if(delay_before_write_counter_d[stage1_next_bank] <= ACTIVATE_TO_WRITE_DELAY[$clog2(MAX_DELAY_BEFORE_WRITE):0]) begin  // if current delay is > ACTIVATE_TO_WRITE_DELAY, then updating it to the lower delay will cause the previous delay to be violated
+                        delay_before_write_counter_d[stage1_next_bank] = ACTIVATE_TO_WRITE_DELAY[$clog2(MAX_DELAY_BEFORE_WRITE):0];
                     end
                     if(DUAL_RANK_DIMM[0]) begin
                         cmd_d[ACTIVATE_SLOT] = {!stage1_next_bank[(DUAL_RANK_DIMM[0]? BA_BITS : 0)], stage1_next_bank[(DUAL_RANK_DIMM[0]? BA_BITS : 0)], CMD_ACT[2:0] , cmd_odt, cmd_ck_en, cmd_reset_n, stage1_next_bank[BA_BITS-1:0] , stage1_next_row[(DUAL_RANK_DIMM[0]? ROW_BITS-1 : ROW_BITS-2):0]}; 
@@ -2478,7 +2486,7 @@ module ddr3_controller #(
                 o_phy_idelay_dqs_ld <= wb2_phy_idelay_dqs_ld;
                 lane <= wb2_write_lane;
             end
-            else if(state_calibrate != DONE_CALIBRATE) begin
+            else if(!final_calibration_done) begin
                 // increase cntvalue every load to prepare for possible next load
                 odelay_data_cntvaluein[lane] <= o_phy_odelay_data_ld[lane]? odelay_data_cntvaluein[lane] + 1: odelay_data_cntvaluein[lane];
                 odelay_dqs_cntvaluein[lane] <= o_phy_odelay_dqs_ld[lane]? odelay_dqs_cntvaluein[lane] + 1: odelay_dqs_cntvaluein[lane];
@@ -2670,8 +2678,8 @@ module ddr3_controller #(
         CALIBRATE_DQS: if(dqs_start_index_stored == dqs_target_index) begin
                             // dq_target_index still stores the original dqs_target_index_value. The bit size of dq_target_index is just enough
                             // to count the bits in dqs_store (the received 8 DQS stored STORED_DQS_SIZE times)
-                            added_read_pipe[lane] <= { {( 4 - ($clog2(STORED_DQS_SIZE*8) - (3+1)) ){1'b0}} , dq_target_index[lane][$clog2(STORED_DQS_SIZE*8)-1:(3+1)] } 
-                                                        + { 3'b0 , (dq_target_index[lane][3:0] >= (5+8)) };
+                            added_read_pipe[lane] <= |({ {( 4 - ($clog2(STORED_DQS_SIZE*8) - (3+1)) ){1'b0}} , dq_target_index[lane][$clog2(STORED_DQS_SIZE*8)-1:(3+1)] } 
+                                                        + { 3'b0 , (dq_target_index[lane][3:0] >= (5+8)) })? 'd1 : 'd0; // added_read_pipe can just be 1 or 0
                             // if target_index is > 13, then a 1 CONTROLLLER_CLK cycle delay (4 ddr3_clk cycles) is added on that particular lane (due to trace delay)
                             // added_read_pipe[lane] <= dq_target_index[lane][$clog2(STORED_DQS_SIZE*8)-1 : (4)]  +  ( dq_target_index[lane][3:0] >= 13 ) ;
                             dqs_bitslip_arrangement <= 16'b0011_1100_0011_1100 >> dq_target_index[lane][2:0];
@@ -2771,7 +2779,8 @@ module ddr3_controller #(
                             pause_counter <= 0;
                         end
 
-    WAIT_FOR_FEEDBACK: if(delay_before_write_level_feedback == 0) begin
+    WAIT_FOR_FEEDBACK:  if(ODELAY_SUPPORTED) begin
+                            if(delay_before_write_level_feedback == 0) begin
                             /* verilator lint_off WIDTH */ //_verilator warning: Bit extraction of var[511:0] requires 9 bit index, not 3 bits (but [lane<<3] is much simpler and cleaner)
                             sample_clk_repeat <= (i_phy_iserdes_data[lane_times_8] == stored_write_level_feedback)? sample_clk_repeat + 1 : 0; //sample_clk_repeat should get the same response 
                             stored_write_level_feedback <= i_phy_iserdes_data[lane_times_8];
@@ -2837,6 +2846,7 @@ module ddr3_controller #(
                                     state_calibrate_next <= START_WRITE_LEVEL;
                              end
                         `endif
+                            end
                          end
                             
         ISSUE_WRITE_1: if(instruction_address == 22 && !o_wb_stall_calib) begin
@@ -2928,7 +2938,7 @@ module ddr3_controller #(
                             // end
                       end
 
-        ANALYZE_DATA_LOW_FREQ: begin // read_data_store should have the expected 9177298cd0ad51c1, if not then issue bitslip
+ANALYZE_DATA_LOW_FREQ: if(DLL_OFF) begin // read_data_store should have the expected 9177298cd0ad51c1, if not then issue bitslip
             if(write_pattern[0 +: 64] == {read_data_store[((DQ_BITS*LANES)*7 + 8*lane) +: 8], read_data_store[((DQ_BITS*LANES)*6 + 8*lane) +: 8],
                         read_data_store[((DQ_BITS*LANES)*5 + 8*lane) +: 8], read_data_store[((DQ_BITS*LANES)*4 + 8*lane) +: 8], read_data_store[((DQ_BITS*LANES)*3 + 8*lane) +: 8],
                         read_data_store[((DQ_BITS*LANES)*2 + 8*lane) +: 8],read_data_store[((DQ_BITS*LANES)*1 + 8*lane) +: 8],read_data_store[((DQ_BITS*LANES)*0 + 8*lane) +: 8] }) begin 
@@ -2996,6 +3006,7 @@ module ddr3_controller #(
                 `endif
             end
         end
+
                         // extract burst_0-to-burst_7 data for a specified lane then determine which byte in write_pattern does it starts (ASSUMPTION: the DQ is too early [3d_9177298cd0ad51]c1 is written)
                         // NOTE TO SELF: all "8" here assume DQ_BITS are 8? parameterize this properly
                         // data_start_index for a specified lane determine how many bits are off the data from the write command
@@ -3110,8 +3121,8 @@ module ddr3_controller #(
                             else begin 
                                 lane_read_dq_early[lane] <= 1'b1; // set to 1 to see later what lanes has this problem
                                 state_calibrate <= BITSLIP_DQS_TRAIN_3;
-                                added_read_pipe[lane] <= { {( 4 - ($clog2(STORED_DQS_SIZE*8) - (3+1)) ){1'b0}} , dq_target_index[lane][$clog2(STORED_DQS_SIZE*8)-1:(3+1)] } 
-                                                            + { 3'b0 , (dq_target_index[lane][3:0] >= (5+8)) };
+                                    added_read_pipe[lane] <= |({ {( 4 - ($clog2(STORED_DQS_SIZE*8) - (3+1)) ){1'b0}} , dq_target_index[lane][$clog2(STORED_DQS_SIZE*8)-1:(3+1)] } 
+                                                                + { 3'b0 , (dq_target_index[lane][3:0] >= (5+8)) })? 'd1 : 'd0; // added_read_pipe can just be 1 or 0
                                 dqs_bitslip_arrangement <= 16'b0011_1100_0011_1100 >> dq_target_index[lane][2:0];
                                 `ifdef UART_DEBUG_ALIGN
                                     uart_start_send <= 1'b1;
@@ -3184,7 +3195,7 @@ BITSLIP_DQS_TRAIN_3: if(train_delay == 0) begin //train again the ISERDES to cap
                                             write_test_address_counter <= 0;
                                         end
                                         state_calibrate <= BURST_READ;
-                                        `ifdef UART_DEBUG_ALIGN
+                                        `ifdef UART_DEBUG_BIST
                                             uart_start_send <= 1'b1;
                                             uart_text <= {"DONE BURST WRITE (PER BYTE): BIST_MODE=",hex_to_ascii(BIST_MODE),8'h0a};
                                             state_calibrate <= WAIT_UART;
@@ -3207,7 +3218,7 @@ BITSLIP_DQS_TRAIN_3: if(train_delay == 0) begin //train again the ISERDES to cap
                                         write_test_address_counter <= 0;
                                     end
                                     state_calibrate <= BURST_READ;
-                                    `ifdef UART_DEBUG_ALIGN
+                                    `ifdef UART_DEBUG_BIST
                                         uart_start_send <= 1'b1;
                                         uart_text <= {"DONE BURST WRITE (ALL BYTES): BIST_MODE=",hex_to_ascii(BIST_MODE),8'h0a};
                                         state_calibrate <= WAIT_UART;
@@ -3230,7 +3241,7 @@ BITSLIP_DQS_TRAIN_3: if(train_delay == 0) begin //train again the ISERDES to cap
                                     read_test_address_counter <= 0;
                                 end
                                 state_calibrate <= RANDOM_WRITE;
-                                `ifdef UART_DEBUG_ALIGN
+                                `ifdef UART_DEBUG_BIST
                                     uart_start_send <= 1'b1;
                                     uart_text <= {"DONE BURST READ: BIST_MODE=",hex_to_ascii(BIST_MODE),8'h0a};
                                     state_calibrate <= WAIT_UART;
@@ -3258,7 +3269,7 @@ BITSLIP_DQS_TRAIN_3: if(train_delay == 0) begin //train again the ISERDES to cap
                                     write_test_address_counter <= 0;
                                 end
                                 state_calibrate <= RANDOM_READ;
-                                `ifdef UART_DEBUG_ALIGN
+                                `ifdef UART_DEBUG_BIST
                                     uart_start_send <= 1'b1;
                                     uart_text <= {"DONE RANDOM WRITE: BIST_MODE=",hex_to_ascii(BIST_MODE),8'h0a};
                                     state_calibrate <= WAIT_UART;
@@ -3284,7 +3295,7 @@ BITSLIP_DQS_TRAIN_3: if(train_delay == 0) begin //train again the ISERDES to cap
                                 read_test_address_counter <= 0;
                             end
                             state_calibrate <= ALTERNATE_WRITE_READ;
-                            `ifdef UART_DEBUG_ALIGN
+                            `ifdef UART_DEBUG_BIST
                                 uart_start_send <= 1'b1;
                                 uart_text <= {"DONE RANDOM READ: BIST_MODE=",hex_to_ascii(BIST_MODE),8'h0a};
                                 state_calibrate <= WAIT_UART;
@@ -3308,7 +3319,7 @@ ALTERNATE_WRITE_READ: if(!o_wb_stall_calib) begin
                         /* verilator lint_on WIDTHEXPAND */
                             train_delay <= 15;
                             state_calibrate <= FINISH_READ;
-                            `ifdef UART_DEBUG_ALIGN
+                            `ifdef UART_DEBUG_BIST
                                 uart_start_send <= 1'b1;
                                 uart_text <= {"DONE ALTERNATING WRITE-READ",8'h0a};
                                 state_calibrate <= WAIT_UART;
@@ -3332,7 +3343,7 @@ ALTERNATE_WRITE_READ: if(!o_wb_stall_calib) begin
                                 state_calibrate <= DONE_CALIBRATE;
                                 final_calibration_done <= 1'b1;
                             end
-                            `ifdef UART_DEBUG_ALIGN
+                            `ifdef UART_DEBUG_BIST
                                 uart_start_send <= 1'b1;
                                 uart_text <= {"DONE BIST_MODE=",hex_to_ascii(BIST_MODE),", correct_read_data=",
                                     8'h0a, 8'h0a, correct_read_data, 8'h0a, 8'h0a, 8'h0a, 8'h0a
@@ -3385,7 +3396,7 @@ ALTERNATE_WRITE_READ: if(!o_wb_stall_calib) begin
                 pause_counter <= 1; // pause instruction address until pre-stall delay before refresh sequence finishes
                 //skip to instruction address 20 (precharge all before refresh) when no pending requests anymore
                 //toggle it for 1 clk cycle only
-                if( !stage1_pending && !stage2_pending && ( (o_wb_stall && final_calibration_done) || (o_wb_stall_calib && state_calibrate != DONE_CALIBRATE) ) ) begin 
+                if( !stage1_pending && !stage2_pending && ( (o_wb_stall && final_calibration_done) || (o_wb_stall_calib && !final_calibration_done) ) ) begin 
                    pause_counter <= 0; // pre-stall delay done since all remaining requests are completed
                 end
             end
@@ -3629,7 +3640,7 @@ ALTERNATE_WRITE_READ: if(!o_wb_stall_calib) begin
         end
         else begin
             reset_from_test <= 0;
-            if(state_calibrate != DONE_CALIBRATE) begin          
+            if(!final_calibration_done) begin          
                 if ( o_aux[2:0] == 3'd3 && o_wb_ack_uncalibrated ) begin //o_aux = 3 is for read from calibration
                     if(o_wb_data == correct_data) begin
                         correct_read_data <= correct_read_data + 1;
