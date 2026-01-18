@@ -1701,7 +1701,6 @@ module ddr3_controller #(
         stage2_stall = 1'b0;
         ecc_stage2_stall = 1'b0;
         stage2_update = 1'b1; //always update stage 2 UNLESS it has a pending request (stage2_pending high)
-        // o_wb_stall_d = 1'b0; //wb_stall going high is determined on stage 1 (higher priority), wb_stall going low is determined at stage2 (lower priority)
         precharge_slot_busy = 0; //flag that determines if stage 2 is issuing precharge (thus stage 1 cannot issue precharge)
         activate_slot_busy = 0; //flag that determines if stage 2 is issuing activate (thus stage 1 cannot issue activate)
         write_dqs_d = write_calib_dqs;
@@ -1774,7 +1773,6 @@ module ddr3_controller #(
         //USE _d in ALL
         //if there is a pending request, issue the appropriate commands
         if(stage2_pending) begin 
-            stage2_stall = 1; //initially high when stage 2 is pending 
             ecc_stage2_stall = 1;
             stage2_update = 0;
 
@@ -1829,7 +1827,6 @@ module ddr3_controller #(
             else if(stage2_do_wr_or_rd) begin //read/write operation
                 //write request
                 if(stage2_do_wr) begin       
-                    stage2_stall = 0;
                     ecc_stage2_stall = 0;
                     stage2_update = 1;
                     cmd_odt = 1'b1;
@@ -1919,7 +1916,6 @@ module ddr3_controller #(
                 
                 //read request
                 else if(stage2_do_rd) begin     
-                    stage2_stall = 0;
                     ecc_stage2_stall = 0;
                     stage2_update = 1;
                     cmd_odt = 1'b0;
@@ -2023,35 +2019,36 @@ module ddr3_controller #(
             end //end of stage1 anticipate
         end
 
-        // control stage 1 stall
-        if(stage1_pending) begin //raise stall only if stage2 will still be busy next clock
-            // Stage1 bank and row will determine if transaction will be
-            // stalled (bank is idle OR wrong row is active). 
-            if(!bank_status_d[stage1_bank] || (bank_status_d[stage1_bank] && bank_active_row_d[stage1_bank] != stage1_row)) begin 
+        // control stage 1 stall in advance
+        if(stage1_pending) begin // raise stall only if stage2 will still be busy next clock
+            // stall stage 1 by default if there is pending request on stage 1
                 stage1_stall = 1;
+            
+            if(bank_status_d[stage1_bank] && bank_active_row_d[stage1_bank] == stage1_row) begin 
+                // if write request and delay before write is already met then deassert stall
+                if(stage1_we && delay_before_write_counter_d[stage1_bank] == 0) begin 
+                    stage1_stall = 0;
             end
-            else if(!stage1_we && delay_before_read_counter_d[stage1_bank] != 0) begin // if read request but delay before read is not yet met then stall
-                stage1_stall = 1;
+                // if read request and delay before read is already met then deassert stall 
+                else if(!stage1_we && delay_before_read_counter_d[stage1_bank] == 0) begin 
+                    stage1_stall = 0;
             end
-            else if(stage1_we && delay_before_write_counter_d[stage1_bank] != 0) begin // if write request but delay before write is not yet met then stall
-                stage1_stall = 1;
             end
-            //different request type will need a delay of more than 1 clk cycle so stall the pipeline 
-            //if(stage1_we != stage2_we) begin
-            //    stage1_stall = 1;
-            //end
         end
 
-        //control stage 2 stall
+        //control stage 2 stall in advance
         if(stage2_pending) begin
-            //control stage2 stall in advance
-            if(bank_status_d[stage2_bank] &&  bank_active_row_d[stage2_bank] == stage2_row) begin //read/write operation
-                //write request
-                if(stage2_we && delay_before_write_counter_d[stage2_bank] == 0) begin // if write request and delay before write is already met then deassert stall
+            // by default, stage 2 stall deasserts once conditions for write/read command is met
+            stage2_stall = !(stage2_do_wr_or_rd && (stage2_do_wr || stage2_do_rd));
+            // equivalent to: if(bank_status_d[stage2_bank] &&  bank_active_row_d[stage2_bank] == stage2_row)
+            // can start read/write operation if right row is active on the bank
+            if(stage2_do_act || stage2_do_wr_or_rd) begin 
+                // if write request and delay before write is already met then deassert stall
+                if(stage2_we && delay_before_write_counter_d[stage2_bank] == 0) begin 
                     stage2_stall = 0; //to low stall next stage, but not yet at this stage
                 end
-                //read request
-                else if(!stage2_we && delay_before_read_counter_d[stage2_bank]==0) begin // if read request and delay before read is already met then deassert stall 
+                // if read request and delay before read is already met then deassert stall
+                else if(!stage2_we && delay_before_read_counter_d[stage2_bank]==0) begin  
                     stage2_stall = 0;
                 end
             end
