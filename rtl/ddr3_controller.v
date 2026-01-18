@@ -513,7 +513,7 @@ module ddr3_controller #(
     reg[COL_BITS-1:0] stage2_col = 0, stage2_col_d;
     reg[BA_BITS-1+DUAL_RANK_DIMM:0] stage2_bank = 0, stage2_bank_d;
     reg[ROW_BITS-1:0] stage2_row = 0, stage2_row_d;
-    
+
     //delay counter for every banks
     reg[$clog2(MAX_DELAY_BEFORE_PRECHARGE):0] delay_before_precharge_counter_q[(1<<(BA_BITS+DUAL_RANK_DIMM))-1:0], delay_before_precharge_counter_d[(1<<(BA_BITS+DUAL_RANK_DIMM))-1:0]; //delay counters
     reg[$clog2(MAX_DELAY_BEFORE_ACTIVATE):0] delay_before_activate_counter_q[(1<<(BA_BITS+DUAL_RANK_DIMM))-1:0], delay_before_activate_counter_d[(1<<(BA_BITS+DUAL_RANK_DIMM))-1:0] ;
@@ -893,42 +893,42 @@ module ddr3_controller #(
         delay_counter_is_zero_d = delay_counter_is_zero;
         reset_done_d = reset_done;
 
-            //update counter after reaching zero
-            if(delay_counter_is_zero) begin 
+        //update counter after reaching zero
+        if(delay_counter_is_zero) begin 
             //retrieve delay value of current instruction, we count to zero thus minus 1
             delay_counter_d = instruction[DELAY_COUNTER_WIDTH - 1:0]; 
-            end
-            //else: decrement delay counter when current instruction needs delay
-            //don't decrement (has infinite time) when last bit of
-            //delay_counter is 1 (for r/w calibration and prestall delay)
-            //address will only move forward for these kinds of delay only
-            //when skip_reset_seq_delay is toggled
+        end
+        //else: decrement delay counter when current instruction needs delay
+        //don't decrement (has infinite time) when last bit of
+        //delay_counter is 1 (for r/w calibration and prestall delay)
+        //address will only move forward for these kinds of delay only
+        //when skip_reset_seq_delay is toggled
         else if(instruction[USE_TIMER] /*&& delay_counter != {(DELAY_COUNTER_WIDTH){1'b1}}*/ && !pause_counter && delay_counter != 0) begin
             delay_counter_d = delay_counter - 1; 
         end
-            
-            //delay_counter of 1 means we will need to update the delay_counter next clock cycle (delay_counter of zero) so we need to retrieve 
-            //now the next instruction. The same thing needs to be done when current instruction does not need the timer delay.
-            if( ((delay_counter == 1) && !pause_counter) || !instruction[USE_TIMER]/* || skip_reset_seq_delay*/) begin
+        
+        //delay_counter of 1 means we will need to update the delay_counter next clock cycle (delay_counter of zero) so we need to retrieve 
+        //now the next instruction. The same thing needs to be done when current instruction does not need the timer delay.
+        if( ((delay_counter == 1) && !pause_counter) || !instruction[USE_TIMER]/* || skip_reset_seq_delay*/) begin
             delay_counter_is_zero_d = 1; 
             instruction_d = read_rom_instruction(instruction_address);
             if(instruction_address == 5'd22) begin 
                 // if user_self_refresh is disabled, wrap back to 19 (Precharge All before Refresh)
                 instruction_address_d = 5'd19;
-                end
+            end
             else if(instruction_address == 5'd26) begin 
                 // self-refresh exit always wraps back to 20 (Refresh)
                 instruction_address_d = 5'd20;
-                end
-                else begin
+            end
+            else begin
                 // just increment address
                 instruction_address_d = instruction_address + 5'd1; // just increment address
-                end
             end
-            //we are now on the middle of a delay 
-            else begin
+        end
+        //we are now on the middle of a delay 
+        else begin
             delay_counter_is_zero_d =0; 
-            end
+        end
 
         // if user_self_refresh is enabled, go straight to 23
         if(instruction_address == 5'd22 && user_self_refresh_q) begin 
@@ -937,9 +937,9 @@ module ddr3_controller #(
             delay_counter_is_zero_d = 1; 
             delay_counter_d = 0;
             instruction_d = read_rom_instruction(instruction_address);
-            end
+        end
 
-            //instruction[RST_DONE] is non-persistent thus we need to register it once it goes high
+        //instruction[RST_DONE] is non-persistent thus we need to register it once it goes high
         reset_done_d = instruction[RST_DONE]? 1 : reset_done; 
 
         // instruction is at precharge all (20 or 24)
@@ -1009,8 +1009,8 @@ module ddr3_controller #(
             end
             //reset bank status and active row
             for( index=0; index < (1<<(BA_BITS+DUAL_RANK_DIMM)); index=index+1) begin
-                    bank_status_q[index] <= 0;  
-                    bank_active_row_q[index] <= 0; 
+                bank_status_q[index] <= 0;  
+                bank_active_row_q[index] <= 0; 
             end
              //reset data
             for(index = 0; index < STAGE2_DATA_DEPTH; index = index+1) begin
@@ -1065,7 +1065,7 @@ module ddr3_controller #(
             end
             for( index=0; index < (1<<(BA_BITS+DUAL_RANK_DIMM)); index=index+1) begin
                 bank_status_q[index] <= precharge_all_instruction? 0 : bank_status_d[index];  
-                bank_active_row_q[index] <= bank_active_row_d[index];
+                bank_active_row_q[index] <= bank_active_row_d[index]; 
             end
 
             // stage2 can have multiple pipelined stages inside it which acts as delay before issuing the write data (after issuing write command)
@@ -1165,9 +1165,9 @@ module ddr3_controller #(
                     /* verilator lint_on WIDTH */
                 end // end for else statement (dq is not late for this lane)
             end // end of for loop to forward stage2_unaligned to stage2 by lane
-                end
-            end
-            
+        end
+    end
+
     always @* begin
         // stage 1
         stage1_pending_d = stage1_pending;
@@ -1199,16 +1199,16 @@ module ddr3_controller #(
             ecc_row_addr_d = ecc_row_addr;
             ecc_col_addr_d = ecc_col_addr;
             stage2_encoded_parity_d = stage2_encoded_parity;
-            end
-            
+        end
+
         /////////////////////////////////////////
         // Stage 2 
         /////////////////////////////////////////
-            //if pipeline is not stalled (or a request is left on the prestall
-            //delay address 19 or if in calib), move pipeline to stage 2
-            if(stage2_update) begin //ITS POSSIBLE ONLY NEXT CLK WILL STALL SUPPOSE TO GO LOW
+        //if pipeline is not stalled (or a request is left on the prestall
+        //delay address 19 or if in calib), move pipeline to stage 2
+        if(stage2_update) begin //ITS POSSIBLE ONLY NEXT CLK WILL STALL SUPPOSE TO GO LOW
             stage2_pending_d = stage1_pending;
-                if(ECC_ENABLE != 3) begin
+            if(ECC_ENABLE != 3) begin
                 stage1_pending_d = 1'b0; //no request initially unless overridden by the actual stb request
                 stage2_pending_d = stage1_pending;
                 stage2_aux_d = stage1_aux;
@@ -1216,226 +1216,226 @@ module ddr3_controller #(
                 stage2_col_d = stage1_col;
                 stage2_bank_d = stage1_bank;
                 stage2_row_d = stage1_row;
-                    if(ODELAY_SUPPORTED || DLL_OFF) begin
+                if(ODELAY_SUPPORTED || DLL_OFF) begin
                     stage2_data_unaligned_d = stage1_data_mux;
                     stage2_dm_unaligned_d = ~stage1_dm; //inverse each bit (1 must mean "masked" or not written)
-                    end
-                    else begin
+                end
+                else begin
                     stage2_data_unaligned_temp_d = stage1_data_mux;
                     stage2_dm_unaligned_temp_d = ~stage1_dm; //inverse each bit (1 must mean "masked" or not written)
-                    end
                 end
-                // ECC_ENABLE == 3
-                else begin
+            end
+            // ECC_ENABLE == 3
+            else begin
                 stage1_pending_d = ecc_stage1_stall? stage1_pending : 1'b0; //stage1 remains the same for ECC op (no request initially unless overridden by the actual stb request)
-                    // if switching from write to read and ECC is not yet written then do a write first to store those ECC bits
-                    if(!stage1_we && stage2_we && stage1_pending && !write_ecc_stored_to_mem_d && initial_calibration_done) begin
+                // if switching from write to read and ECC is not yet written then do a write first to store those ECC bits
+                if(!stage1_we && stage2_we && stage1_pending && !write_ecc_stored_to_mem_d && initial_calibration_done) begin
                     stage2_we_d = 1'b1;
-                        // if ecc_stage1_stall, stage2 will start ECC write/read operation
-                        // if ECC write, then we are writing ECC for previous address
-                        // if ECC read, then we are reading ECC for current address
+                    // if ecc_stage1_stall, stage2 will start ECC write/read operation
+                    // if ECC write, then we are writing ECC for previous address
+                    // if ECC read, then we are reading ECC for current address
                     stage2_col_d = ecc_col_addr_prev;
                     stage2_bank_d[BA_BITS-1:0] = ecc_bank_addr_prev;
                     stage2_row_d = ecc_row_addr_prev;
                     ecc_col_addr_prev_d = ecc_col_addr;
                     ecc_bank_addr_prev_d = ecc_bank_addr;
                     ecc_row_addr_prev_d = ecc_row_addr;
-                        // For ECC requests, 2MSB of aux determines type of ECC request (read = 2'10, write = 2'b11)
+                    // For ECC requests, 2MSB of aux determines type of ECC request (read = 2'10, write = 2'b11)
                     stage2_aux_d = { 1'b1, 1'b1, 3'b000, {(AUX_WIDTH-5){1'b1}} };
-                    end
+                end
                 // else pass stage 1 to stage 2
-                    else begin
+                else begin
                     stage2_we_d = stage1_we;
-                        // if ecc_stage1_stall, stage2 will start ECC write/read operation
-                        // if ECC write, then we are writing ECC for previous address
-                        // if ECC read, then we are reading ECC for current address
+                    // if ecc_stage1_stall, stage2 will start ECC write/read operation
+                    // if ECC write, then we are writing ECC for previous address
+                    // if ECC read, then we are reading ECC for current address
                     stage2_col_d = ecc_stage1_stall? (stage1_we? ecc_col_addr_prev : ecc_col_addr) : stage1_col;
                     stage2_bank_d[BA_BITS-1:0] = ecc_stage1_stall? (stage1_we? ecc_bank_addr_prev : ecc_bank_addr) : stage1_bank[BA_BITS-1:0];
                     stage2_row_d = ecc_stage1_stall? (stage1_we? ecc_row_addr_prev : ecc_row_addr) : stage1_row;
                     ecc_col_addr_prev_d = ecc_col_addr;
                     ecc_bank_addr_prev_d = ecc_bank_addr;
                     ecc_row_addr_prev_d = ecc_row_addr;
-                        // For ECC requests, 2MSB of aux determines type of ECC request (read = 2'10, write = 2'b11)
-                        // For non-ECC request (MSB is 0), next 3MSB is allotted for the column (burst position to know position of encoded parity ECC bits)
+                    // For ECC requests, 2MSB of aux determines type of ECC request (read = 2'10, write = 2'b11)
+                    // For non-ECC request (MSB is 0), next 3MSB is allotted for the column (burst position to know position of encoded parity ECC bits)
                     stage2_aux_d = ecc_stage1_stall? { 1'b1, !stage1_we, 3'b000, {(AUX_WIDTH-5){1'b1}} } : {1'b0, !stage1_we, stage1_col[5:3], stage1_aux[AUX_WIDTH-6:0]};
-                    end
-                    // store parity code for stage1_data
+                end
+                // store parity code for stage1_data
                 stage2_encoded_parity_d = encoded_parity;
-                    if(ODELAY_SUPPORTED  || DLL_OFF) begin
+                if(ODELAY_SUPPORTED  || DLL_OFF) begin
                     stage2_data_unaligned_d = stage1_data_mux;
                     stage2_dm_unaligned_d = ecc_stage1_stall? ~stage2_ecc_write_data_mask_d : ~stage1_dm; //inverse each bit (1 must mean "masked" or not written)
-                    end
-                    else begin
+                end
+                else begin
                     stage2_data_unaligned_temp_d = stage1_data_mux;
                     stage2_dm_unaligned_temp_d = ecc_stage1_stall? ~stage2_ecc_write_data_mask_d : ~stage1_dm; //inverse each bit (1 must mean "masked" or not written)
-                    end
+                end
             end
             // pipeline: stage2_data -> shiftreg(CWL) -> OSERDES(DDR) -> ODELAY -> RAM
-                end
+        end
 
-            if(!ODELAY_SUPPORTED && !DLL_OFF) begin
+        if(!ODELAY_SUPPORTED && !DLL_OFF) begin
             //_temp is for added delay of 1 clock cycle (no ODELAY so no added delay)
             stage2_data_unaligned_d = stage2_data_unaligned_temp; 
             stage2_dm_unaligned_d = stage2_dm_unaligned_temp;
-            end
+        end
 
         /////////////////////////////////////////
         // Stage 1
         /////////////////////////////////////////
         if(stage1_update && reset_done) begin 
-                //stage1 will not do the request (pending low) when the
-                //request is on the same bank as the current request. This
-                //will ensure stage1 bank will be different from stage2 bank
+            //stage1 will not do the request (pending low) when the
+            //request is on the same bank as the current request. This
+            //will ensure stage1 bank will be different from stage2 bank
 
-                // if ECC_ENABLE != 3, then stage1 will always receive wishbone interface
-                if(ECC_ENABLE != 3) begin
+            // if ECC_ENABLE != 3, then stage1 will always receive wishbone interface
+            if(ECC_ENABLE != 3) begin
                 stage1_pending_d = i_wb_stb;//actual request flag
                 stage1_aux_d = i_aux; //aux ID for AXI compatibility
                 stage1_we_d = i_wb_we; //write-enable
                 stage1_dm_d = (ECC_ENABLE == 0)? i_wb_sel : {wb_sel_bits{1'b1}}; // no data masking when ECC is enabled
-                end
-                // ECC_ENABLE == 3
-                else begin // if ECC_ENABLE = 3 (inline ECC), then stage1 will either receive stage0 or wishbone
+            end
+            // ECC_ENABLE == 3
+            else begin // if ECC_ENABLE = 3 (inline ECC), then stage1 will either receive stage0 or wishbone
                 stage1_pending_d = wb_stb_mux;//actual request flag
                 stage1_aux_d = aux_mux; //aux ID for AXI compatibility
                 stage1_we_d = wb_we_mux; //write-enable
                 stage1_dm_d = {wb_sel_bits{1'b1}}; // no data masking when ECC is enabled
-                end
+            end
 
-                if(row_bank_col == 1) begin // memory address mapping: {row, bank, col}
-                    if(DUAL_RANK_DIMM[0]) begin
+            if(row_bank_col == 1) begin // memory address mapping: {row, bank, col}
+                if(DUAL_RANK_DIMM[0]) begin
                     stage1_bank_d[(DUAL_RANK_DIMM[0]? BA_BITS : 0)] = i_wb_addr[DUAL_RANK_DIMM[0]? (ROW_BITS + BA_BITS + COL_BITS- $clog2(serdes_ratio*2)) : 0]; // msb determines rank
                     stage1_next_bank_d[(DUAL_RANK_DIMM[0]? BA_BITS : 0)] = wb_addr_plus_anticipate[DUAL_RANK_DIMM[0]? (ROW_BITS + BA_BITS + COL_BITS- $clog2(serdes_ratio*2)) : 0]; // msb determines rank
-                    end
+                end
                 stage1_row_d = i_wb_addr[ (ROW_BITS + BA_BITS + COL_BITS- $clog2(serdes_ratio*2) - 1) : (BA_BITS + COL_BITS - $clog2(serdes_ratio*2)) ]; //row_address
                 stage1_bank_d[BA_BITS-1:0] =  i_wb_addr[ (BA_BITS + COL_BITS - $clog2(serdes_ratio*2) - 1) : (COL_BITS- $clog2(serdes_ratio*2)) ]; //bank_address
                 stage1_col_d = { i_wb_addr[ (COL_BITS- $clog2(serdes_ratio*2)-1) : 0 ], {{$clog2(serdes_ratio*2)}{1'b0}} }; //column address (n-burst word-aligned)
-                    //stage1_next_bank will not increment unless stage1_next_col
-                    //overwraps due to MARGIN_BEFORE_ANTICIPATE. Thus, anticipated
-                    //precharge and activate will happen only at the end of the
-                    //current column with a margin dictated by
-                    //MARGIN_BEFORE_ANTICIPATE  
-                    /* verilator lint_off WIDTH */
+                //stage1_next_bank will not increment unless stage1_next_col
+                //overwraps due to MARGIN_BEFORE_ANTICIPATE. Thus, anticipated
+                //precharge and activate will happen only at the end of the
+                //current column with a margin dictated by
+                //MARGIN_BEFORE_ANTICIPATE  
+                /* verilator lint_off WIDTH */
                 {stage1_next_row_d , stage1_next_bank_d[BA_BITS-1:0]} = wb_addr_plus_anticipate >> (COL_BITS- $clog2(serdes_ratio*2));
-                    //anticipated next row and bank to be accessed 
-                    /* verilator lint_on WIDTH */
+                //anticipated next row and bank to be accessed 
+                /* verilator lint_on WIDTH */
                 stage1_data_d = i_wb_data;
-                end
+            end
 
-                else if(row_bank_col == 0) begin // memory address mapping: {bank, row, col}
+            else if(row_bank_col == 0) begin // memory address mapping: {bank, row, col}
                 stage1_bank_d[BA_BITS-1:0] = i_wb_addr[ (BA_BITS + ROW_BITS + COL_BITS- $clog2(serdes_ratio*2) - 1) : (ROW_BITS + COL_BITS- $clog2(serdes_ratio*2))]; //bank_address
                 stage1_row_d = i_wb_addr[ (ROW_BITS + COL_BITS- $clog2(serdes_ratio*2) - 1) : (COL_BITS- $clog2(serdes_ratio*2)) ]; //row_address
                 stage1_col_d = { i_wb_addr[(COL_BITS- $clog2(serdes_ratio*2)-1) : 0] , {{$clog2(serdes_ratio*2)}{1'b0}} }; //column address (n-burst word-aligned)
-                    //stage1_next_row will not increment unless stage1_next_col
-                    //overwraps due to MARGIN_BEFORE_ANTICIPATE. Thus, anticipated
-                    //precharge and activate will happen only at the end of the
-                    //current column with a margin dictated by
-                    //MARGIN_BEFORE_ANTICIPATE  
-                    /* verilator lint_off WIDTH */
+                //stage1_next_row will not increment unless stage1_next_col
+                //overwraps due to MARGIN_BEFORE_ANTICIPATE. Thus, anticipated
+                //precharge and activate will happen only at the end of the
+                //current column with a margin dictated by
+                //MARGIN_BEFORE_ANTICIPATE  
+                /* verilator lint_off WIDTH */
                 {stage1_next_bank_d, stage1_next_row_d} = wb_addr_plus_anticipate >> (COL_BITS- $clog2(serdes_ratio*2));
-                    //anticipated next row and bank to be accessed 
-                    /* verilator lint_on WIDTH */
+                //anticipated next row and bank to be accessed 
+                /* verilator lint_on WIDTH */
                 stage1_data_d = i_wb_data;
-                end
+            end
 
-                else if(row_bank_col == 2) begin // memory address mapping: {bank[2:1], row, bank[0], col} , used for ECC_ENABLE = 3 (Inline ECC)
+            else if(row_bank_col == 2) begin // memory address mapping: {bank[2:1], row, bank[0], col} , used for ECC_ENABLE = 3 (Inline ECC)
                 stage1_bank_d[2:1] =  wb_addr_mux[ (BA_BITS + ROW_BITS + COL_BITS- $clog2(serdes_ratio*2) - 1) : (ROW_BITS + COL_BITS - $clog2(serdes_ratio*2) + 1)]; //bank_address
                 stage1_row_d = wb_addr_mux[ (ROW_BITS + COL_BITS - $clog2(serdes_ratio*2)) : (COL_BITS - $clog2(serdes_ratio*2) + 1) ]; //row_address
                 stage1_bank_d[0] = wb_addr_mux[COL_BITS - $clog2(serdes_ratio*2)];
                 stage1_col_d = { wb_addr_mux[(COL_BITS - $clog2(serdes_ratio*2)-1) : 0] , {{$clog2(serdes_ratio*2)}{1'b0}} }; //column address (n-burst word-aligned)
-                    //stage1_next_bank will not increment unless stage1_next_col
-                    //overwraps due to MARGIN_BEFORE_ANTICIPATE. This will overwrap every two banks
-                    //MARGIN_BEFORE_ANTICIPATE  
-                    /* verilator lint_off WIDTH */
+                //stage1_next_bank will not increment unless stage1_next_col
+                //overwraps due to MARGIN_BEFORE_ANTICIPATE. This will overwrap every two banks
+                //MARGIN_BEFORE_ANTICIPATE  
+                /* verilator lint_off WIDTH */
                 {stage1_next_bank_d[2:1], stage1_next_row_d, stage1_next_bank_d[0]} = wb_addr_plus_anticipate >> (COL_BITS - $clog2(serdes_ratio*2));
-                    //anticipated next row and bank to be accessed 
-                    /* verilator lint_on WIDTH */
-                    // ECC Mapping (Excel sheet design planning: https://docs.google.com/spreadsheets/d/1_8vrLmVSFpvRD13Mk8aNAMYlh62SfpPXOCYIQFEtcs4/edit?gid=0#gid=0)
+                //anticipated next row and bank to be accessed 
+                /* verilator lint_on WIDTH */
+                // ECC Mapping (Excel sheet design planning: https://docs.google.com/spreadsheets/d/1_8vrLmVSFpvRD13Mk8aNAMYlh62SfpPXOCYIQFEtcs4/edit?gid=0#gid=0)
                 ecc_bank_addr_d = {2'b11,!wb_addr_mux[COL_BITS - $clog2(serdes_ratio*2)]};
                 ecc_row_addr_d = {1'b1, wb_addr_mux[ (ROW_BITS + COL_BITS - $clog2(serdes_ratio*2)) : (COL_BITS - $clog2(serdes_ratio*2) + 1 + 1) ]};
                 ecc_col_addr_d = { wb_addr_mux[(COL_BITS - $clog2(serdes_ratio*2) + 1)] , 
-                                        wb_addr_mux[(BA_BITS + ROW_BITS + COL_BITS- $clog2(serdes_ratio*2) - 1) : (ROW_BITS + COL_BITS - $clog2(serdes_ratio*2) + 1)] ,
-                                        wb_addr_mux[(COL_BITS - $clog2(serdes_ratio*2) - 1) : 3], 3'b000 };
+                                    wb_addr_mux[(BA_BITS + ROW_BITS + COL_BITS- $clog2(serdes_ratio*2) - 1) : (ROW_BITS + COL_BITS - $clog2(serdes_ratio*2) + 1)] ,
+                                    wb_addr_mux[(COL_BITS - $clog2(serdes_ratio*2) - 1) : 3], 3'b000 };
                 stage1_data_d = wb_data_mux;
-                end
             end
+        end
 
-            // request from calibrate FSM will be accepted here
+        // request from calibrate FSM will be accepted here
         else if(stage1_update_calib && reset_done) begin
-                // if ECC_ENABLE != 3, then stage1 will always receive wishbone interface
-                if(ECC_ENABLE != 3) begin
+            // if ECC_ENABLE != 3, then stage1 will always receive wishbone interface
+            if(ECC_ENABLE != 3) begin
                 stage1_pending_d = calib_stb;//actual request flag
                 stage1_aux_d = calib_aux; //aux ID for AXI compatibility
                 stage1_we_d = calib_we; //write-enable
                 stage1_dm_d = (ECC_ENABLE == 0)? calib_sel : {wb_sel_bits{1'b1}}; // no data masking when ECC is enabled
-                end
-                // ECC_ENABLE == 3
-                else begin // if ECC_ENABLE = 3 (inline ECC), then stage1 will either receive stage0 or wishbone
+            end
+            // ECC_ENABLE == 3
+            else begin // if ECC_ENABLE = 3 (inline ECC), then stage1 will either receive stage0 or wishbone
                 stage1_pending_d = calib_stb_mux;//actual request flag
                 stage1_we_d = calib_we_mux; //write-enable
                 stage1_dm_d = {wb_sel_bits{1'b1}}; // no data masking when ECC is enabled
                 stage1_aux_d = calib_aux_mux; //aux ID for AXI compatibility
-                end
+            end
 
-                if(row_bank_col == 1) begin // memory address mapping: {row, bank, col}
-                    if(DUAL_RANK_DIMM[0]) begin
+            if(row_bank_col == 1) begin // memory address mapping: {row, bank, col}
+                if(DUAL_RANK_DIMM[0]) begin
                     stage1_bank_d[(DUAL_RANK_DIMM[0]? BA_BITS : 0)] = current_rank; // rank depends on current_rank
                     stage1_next_bank_d[(DUAL_RANK_DIMM[0]? BA_BITS : 0)] = current_rank; // rank depends on current_rank
-                    end
+                end
                 stage1_row_d = calib_addr[ (ROW_BITS + BA_BITS + COL_BITS- $clog2(serdes_ratio*2) - 1) : (BA_BITS + COL_BITS - $clog2(serdes_ratio*2)) ]; //row_address
                 stage1_bank_d[BA_BITS-1:0] =  calib_addr[ (BA_BITS + COL_BITS - $clog2(serdes_ratio*2) - 1) : (COL_BITS- $clog2(serdes_ratio*2)) ]; //bank_address
                 stage1_col_d = { calib_addr[ (COL_BITS- $clog2(serdes_ratio*2)-1) : 0 ], {{$clog2(serdes_ratio*2)}{1'b0}} }; //column address (8-burst word-aligned)
-                    //stage1_next_bank will not increment unless stage1_next_col
-                    //overwraps due to MARGIN_BEFORE_ANTICIPATE. Thus, anticipated
-                    //precharge and activate will happen only at the end of the
-                    //current column with a margin dictated by
-                    //MARGIN_BEFORE_ANTICIPATE  
-                    /* verilator lint_off WIDTH */
+                //stage1_next_bank will not increment unless stage1_next_col
+                //overwraps due to MARGIN_BEFORE_ANTICIPATE. Thus, anticipated
+                //precharge and activate will happen only at the end of the
+                //current column with a margin dictated by
+                //MARGIN_BEFORE_ANTICIPATE  
+                /* verilator lint_off WIDTH */
                 {stage1_next_row_d , stage1_next_bank_d[BA_BITS-1:0] } = calib_addr_plus_anticipate >> (COL_BITS- $clog2(serdes_ratio*2));
-                    //anticipated next row and bank to be accessed 
-                    /* verilator lint_on WIDTH */
+                //anticipated next row and bank to be accessed 
+                /* verilator lint_on WIDTH */
                 stage1_data_d = calib_data;
-                end
-                else if(row_bank_col == 0) begin // memory address mapping: {bank, row, col}
+            end
+            else if(row_bank_col == 0) begin // memory address mapping: {bank, row, col}
                 stage1_bank_d[BA_BITS-1:0] =  calib_addr[ (BA_BITS + ROW_BITS + COL_BITS- $clog2(serdes_ratio*2) - 1) : (ROW_BITS + COL_BITS- $clog2(serdes_ratio*2))]; //bank_address
                 stage1_row_d = calib_addr[ (ROW_BITS + COL_BITS- $clog2(serdes_ratio*2) - 1) : (COL_BITS- $clog2(serdes_ratio*2)) ]; //row_address
                 stage1_col_d = { calib_addr[(COL_BITS- $clog2(serdes_ratio*2)-1) : 0] , {{$clog2(serdes_ratio*2)}{1'b0}} }; //column address (8-burst word-aligned)
-                    //stage1_next_row will not increment unless stage1_next_col
-                    //overwraps due to MARGIN_BEFORE_ANTICIPATE. Thus, anticipated
-                    //precharge and activate will happen only at the end of the
-                    //current column with a margin dictated by
-                    //MARGIN_BEFORE_ANTICIPATE  
-                    /* verilator lint_off WIDTH */
+                //stage1_next_row will not increment unless stage1_next_col
+                //overwraps due to MARGIN_BEFORE_ANTICIPATE. Thus, anticipated
+                //precharge and activate will happen only at the end of the
+                //current column with a margin dictated by
+                //MARGIN_BEFORE_ANTICIPATE  
+                /* verilator lint_off WIDTH */
                 {stage1_next_bank_d, stage1_next_row_d} = calib_addr_plus_anticipate >> (COL_BITS- $clog2(serdes_ratio*2));
-                    //anticipated next row and bank to be accessed 
-                    /* verilator lint_on WIDTH */
+                //anticipated next row and bank to be accessed 
+                /* verilator lint_on WIDTH */
                 stage1_data_d = calib_data;
-                end
-                else if(row_bank_col == 2) begin // memory address mapping: {bank[2:1], row, bank[0], col}
+            end
+            else if(row_bank_col == 2) begin // memory address mapping: {bank[2:1], row, bank[0], col}
                 stage1_bank_d[2:1] =  calib_addr_mux[ (BA_BITS + ROW_BITS + COL_BITS- $clog2(serdes_ratio*2) - 1) : (ROW_BITS + COL_BITS - $clog2(serdes_ratio*2) + 1)]; //bank_address
                 stage1_row_d = calib_addr_mux[ (ROW_BITS + COL_BITS - $clog2(serdes_ratio*2)) : (COL_BITS - $clog2(serdes_ratio*2) + 1) ]; //row_address
                 stage1_bank_d[0] = calib_addr_mux[COL_BITS - $clog2(serdes_ratio*2)];
                 stage1_col_d = { calib_addr_mux[(COL_BITS- $clog2(serdes_ratio*2)-1) : 0] , {{$clog2(serdes_ratio*2)}{1'b0}} }; //column address (n-burst word-aligned)
-                    //stage1_next_row will not increment unless stage1_next_col
-                    //overwraps due to MARGIN_BEFORE_ANTICIPATE. This will overwrap every two banks
-                    //MARGIN_BEFORE_ANTICIPATE  
-                    /* verilator lint_off WIDTH */
+                //stage1_next_row will not increment unless stage1_next_col
+                //overwraps due to MARGIN_BEFORE_ANTICIPATE. This will overwrap every two banks
+                //MARGIN_BEFORE_ANTICIPATE  
+                /* verilator lint_off WIDTH */
                 {stage1_next_bank_d[2:1], stage1_next_row_d, stage1_next_bank_d[0]} = calib_addr_plus_anticipate >> (COL_BITS - $clog2(serdes_ratio*2));
-                    //anticipated next row and bank to be accessed 
-                    /* verilator lint_on WIDTH */
-                    // ECC Mapping (Excel sheet design planning: https://docs.google.com/spreadsheets/d/1_8vrLmVSFpvRD13Mk8aNAMYlh62SfpPXOCYIQFEtcs4/edit?gid=0#gid=0)
-                    // ECC_BANK = {11,!bank[0]} 
-                    // ECC_ROW = {1,row>>1} 
-                    // ECC_COL = {row[0],bank[2:1],col>>3}"						
+                //anticipated next row and bank to be accessed 
+                /* verilator lint_on WIDTH */
+                // ECC Mapping (Excel sheet design planning: https://docs.google.com/spreadsheets/d/1_8vrLmVSFpvRD13Mk8aNAMYlh62SfpPXOCYIQFEtcs4/edit?gid=0#gid=0)
+                // ECC_BANK = {11,!bank[0]} 
+                // ECC_ROW = {1,row>>1} 
+                // ECC_COL = {row[0],bank[2:1],col>>3}"						
                 ecc_bank_addr_d = {2'b11,!calib_addr_mux[COL_BITS - $clog2(serdes_ratio*2)]};
                 ecc_row_addr_d = {1'b1, calib_addr_mux[ (ROW_BITS + COL_BITS - $clog2(serdes_ratio*2)) : (COL_BITS - $clog2(serdes_ratio*2) + 1 + 1) ]};
                 ecc_col_addr_d = { calib_addr_mux[(COL_BITS - $clog2(serdes_ratio*2) + 1)] , 
-                                        calib_addr_mux[(BA_BITS + ROW_BITS + COL_BITS- $clog2(serdes_ratio*2) - 1) : (ROW_BITS + COL_BITS - $clog2(serdes_ratio*2) + 1)] ,
-                                        calib_addr_mux[(COL_BITS - $clog2(serdes_ratio*2) - 1) : 3], 3'b000 };
+                                    calib_addr_mux[(BA_BITS + ROW_BITS + COL_BITS- $clog2(serdes_ratio*2) - 1) : (ROW_BITS + COL_BITS - $clog2(serdes_ratio*2) + 1)] ,
+                                    calib_addr_mux[(COL_BITS - $clog2(serdes_ratio*2) - 1) : 3], 3'b000 };
                 stage1_data_d = calib_data_mux;
-                end
             end
-            
+        end
+        
         //abort any outgoing ack when cyc is low
         if(!i_wb_cyc && final_calibration_done) begin
             stage2_pending_d = 0;
@@ -1444,7 +1444,7 @@ module ddr3_controller #(
     end
 
     always @(posedge i_controller_clk) begin
-            for(index = 0; index < LANES; index = index + 1) begin
+        for(index = 0; index < LANES; index = index + 1) begin
             late_dq[index] <= (lane_write_dq_late[index] && (data_start_index[index] != 0)) && (STAGE2_DATA_DEPTH > 1);
         end
     end
@@ -2019,17 +2019,17 @@ module ddr3_controller #(
         // control stage 1 stall in advance
         if(stage1_pending) begin // raise stall only if stage2 will still be busy next clock
             // stall stage 1 by default if there is pending request on stage 1
-                stage1_stall = 1;
+            stage1_stall = 1; 
             
             if(bank_status_d[stage1_bank] && bank_active_row_d[stage1_bank] == stage1_row) begin 
                 // if write request and delay before write is already met then deassert stall
                 if(stage1_we && delay_before_write_counter_d[stage1_bank] == 0) begin 
                     stage1_stall = 0;
-            end
+                end
                 // if read request and delay before read is already met then deassert stall 
                 else if(!stage1_we && delay_before_read_counter_d[stage1_bank] == 0) begin 
                     stage1_stall = 0;
-            end
+                end
             end
         end
 
@@ -2111,7 +2111,7 @@ module ddr3_controller #(
             end
         end
     end //end of always block
-
+    
     always @* begin
         force_o_wb_stall_high_d = !final_calibration_done || !instruction[REF_IDLE];
         force_o_wb_stall_calib_high_d = !instruction[REF_IDLE];
@@ -2781,73 +2781,73 @@ module ddr3_controller #(
 
     WAIT_FOR_FEEDBACK:  if(ODELAY_SUPPORTED) begin
                             if(delay_before_write_level_feedback == 0) begin
-                            /* verilator lint_off WIDTH */ //_verilator warning: Bit extraction of var[511:0] requires 9 bit index, not 3 bits (but [lane<<3] is much simpler and cleaner)
-                            sample_clk_repeat <= (i_phy_iserdes_data[lane_times_8] == stored_write_level_feedback)? sample_clk_repeat + 1 : 0; //sample_clk_repeat should get the same response 
-                            stored_write_level_feedback <= i_phy_iserdes_data[lane_times_8];
-                            write_calib_dqs <= 0;
-                            if(sample_clk_repeat == REPEAT_CLK_SAMPLING) begin
-                                sample_clk_repeat <= 0;
-                                prev_write_level_feedback <= stored_write_level_feedback;
-                                if(({prev_write_level_feedback, stored_write_level_feedback} == 2'b01) /*|| write_level_fail[lane]*/) begin
-                                    /* verilator lint_on WIDTH */
-                                    /* verilator lint_off WIDTH */
-                                    if(lane == LANES - 1) begin
-                                    /* verilator lint_on WIDTH */
-                                            write_calib_odt <= 0;
-                                            pause_counter <= 0; //write calibration now complete so continue the reset instruction sequence
-                                            lane <= 0;
-                                            o_phy_write_leveling_calib <= 0;
-                                            state_calibrate <= ISSUE_WRITE_1;
+                                /* verilator lint_off WIDTH */ //_verilator warning: Bit extraction of var[511:0] requires 9 bit index, not 3 bits (but [lane<<3] is much simpler and cleaner)
+                                sample_clk_repeat <= (i_phy_iserdes_data[lane_times_8] == stored_write_level_feedback)? sample_clk_repeat + 1 : 0; //sample_clk_repeat should get the same response 
+                                stored_write_level_feedback <= i_phy_iserdes_data[lane_times_8];
+                                write_calib_dqs <= 0;
+                                if(sample_clk_repeat == REPEAT_CLK_SAMPLING) begin
+                                    sample_clk_repeat <= 0;
+                                    prev_write_level_feedback <= stored_write_level_feedback;
+                                    if(({prev_write_level_feedback, stored_write_level_feedback} == 2'b01) /*|| write_level_fail[lane]*/) begin
+                                        /* verilator lint_on WIDTH */
+                                        /* verilator lint_off WIDTH */
+                                        if(lane == LANES - 1) begin
+                                        /* verilator lint_on WIDTH */
+                                                write_calib_odt <= 0;
+                                                pause_counter <= 0; //write calibration now complete so continue the reset instruction sequence
+                                                lane <= 0;
+                                                o_phy_write_leveling_calib <= 0;
+                                                state_calibrate <= ISSUE_WRITE_1;
+                                                `ifdef UART_DEBUG_WRITE_LEVEL
+                                                    uart_start_send <= 1'b1;
+                                                    uart_text <= {"state=WAIT_FOR_FEEDBACK, All Lanes Done",8'h0a,"----------------------",8'h0a};
+                                                    state_calibrate <= WAIT_UART;
+                                                    state_calibrate_next <= ISSUE_WRITE_1;
+                                                `endif
+                                        end
+                                        else begin
+                                            lane <= lane + 1;
+                                            odelay_cntvalue_halfway <= 0;
+                                            prev_write_level_feedback <= 1'b1;
+                                            sample_clk_repeat <= 0;
+                                            state_calibrate <= START_WRITE_LEVEL; 
                                             `ifdef UART_DEBUG_WRITE_LEVEL
                                                 uart_start_send <= 1'b1;
-                                                uart_text <= {"state=WAIT_FOR_FEEDBACK, All Lanes Done",8'h0a,"----------------------",8'h0a};
+                                                uart_text <= {"state=WAIT_FOR_FEEDBACK, Done lane=",hex_to_ascii(lane),8'h0a,"----------------------",8'h0a};
                                                 state_calibrate <= WAIT_UART;
-                                                state_calibrate_next <= ISSUE_WRITE_1;
+                                                state_calibrate_next <= START_WRITE_LEVEL;
                                             `endif
+                                        end
                                     end
                                     else begin
-                                        lane <= lane + 1;
-                                        odelay_cntvalue_halfway <= 0;
-                                        prev_write_level_feedback <= 1'b1;
-                                        sample_clk_repeat <= 0;
+                                        o_phy_odelay_data_ld[lane] <= 1;
+                                        o_phy_odelay_dqs_ld[lane] <= 1;
+                                        write_level_fail[lane] <= odelay_cntvalue_halfway;
+                                        // if(odelay_cntvalue_halfway) begin // if halfway cntvalue is reached which is illegal (or impossible to happen), then we load the original cntvalues
+                                        //     odelay_data_cntvaluein[lane] <= DATA_INITIAL_ODELAY_TAP[4:0];
+                                        //     odelay_dqs_cntvaluein[lane] <= DQS_INITIAL_ODELAY_TAP[4:0];                
+                                        // end
                                         state_calibrate <= START_WRITE_LEVEL; 
                                         `ifdef UART_DEBUG_WRITE_LEVEL
                                             uart_start_send <= 1'b1;
-                                            uart_text <= {"state=WAIT_FOR_FEEDBACK, Done lane=",hex_to_ascii(lane),8'h0a,"----------------------",8'h0a};
+                                            uart_text <= {"state=WAIT_FOR_FEEDBACK, lane=",hex_to_ascii(lane), ", {prev,stored}=", hex_to_ascii(prev_write_level_feedback),
+                                                hex_to_ascii(stored_write_level_feedback), ", o_phy_odelay_data_cntvaluein=0x", hex_to_ascii(o_phy_odelay_data_cntvaluein[4]),
+                                                hex_to_ascii(o_phy_odelay_data_cntvaluein[3:0]), 8'h0a,8'h0a};
                                             state_calibrate <= WAIT_UART;
                                             state_calibrate_next <= START_WRITE_LEVEL;
                                         `endif
                                     end
-                                end
-                                else begin
-                                    o_phy_odelay_data_ld[lane] <= 1;
-                                    o_phy_odelay_dqs_ld[lane] <= 1;
-                                    write_level_fail[lane] <= odelay_cntvalue_halfway;
-                                    // if(odelay_cntvalue_halfway) begin // if halfway cntvalue is reached which is illegal (or impossible to happen), then we load the original cntvalues
-                                    //     odelay_data_cntvaluein[lane] <= DATA_INITIAL_ODELAY_TAP[4:0];
-                                    //     odelay_dqs_cntvaluein[lane] <= DQS_INITIAL_ODELAY_TAP[4:0];                
-                                    // end
-                                    state_calibrate <= START_WRITE_LEVEL; 
-                                    `ifdef UART_DEBUG_WRITE_LEVEL
-                                        uart_start_send <= 1'b1;
-                                        uart_text <= {"state=WAIT_FOR_FEEDBACK, lane=",hex_to_ascii(lane), ", {prev,stored}=", hex_to_ascii(prev_write_level_feedback),
-                                            hex_to_ascii(stored_write_level_feedback), ", o_phy_odelay_data_cntvaluein=0x", hex_to_ascii(o_phy_odelay_data_cntvaluein[4]),
-                                            hex_to_ascii(o_phy_odelay_data_cntvaluein[3:0]), 8'h0a,8'h0a};
-                                        state_calibrate <= WAIT_UART;
-                                        state_calibrate_next <= START_WRITE_LEVEL;
-                                    `endif
-                                end
-                             end     
-                        `ifdef UART_DEBUG_WRITE_LEVEL
-                             else begin
-                                    uart_start_send <= 1'b1;
-                                    uart_text <= {"state=WAIT_FOR_FEEDBACK, sample_clk_repeat=",hex_to_ascii(sample_clk_repeat),8'h0a};
-                                    state_calibrate <= WAIT_UART;
-                                    state_calibrate_next <= START_WRITE_LEVEL;
-                             end
-                        `endif
+                                end     
+                                `ifdef UART_DEBUG_WRITE_LEVEL
+                                    else begin
+                                            uart_start_send <= 1'b1;
+                                            uart_text <= {"state=WAIT_FOR_FEEDBACK, sample_clk_repeat=",hex_to_ascii(sample_clk_repeat),8'h0a};
+                                            state_calibrate <= WAIT_UART;
+                                            state_calibrate_next <= START_WRITE_LEVEL;
+                                    end
+                                 `endif
                             end
-                         end
+                        end
                             
         ISSUE_WRITE_1: if(instruction_address == 22 && !o_wb_stall_calib) begin
                         calib_stb <= 1;//actual request flag
@@ -2939,73 +2939,73 @@ module ddr3_controller #(
                       end
 
 ANALYZE_DATA_LOW_FREQ: if(DLL_OFF) begin // read_data_store should have the expected 9177298cd0ad51c1, if not then issue bitslip
-            if(write_pattern[0 +: 64] == {read_data_store[((DQ_BITS*LANES)*7 + 8*lane) +: 8], read_data_store[((DQ_BITS*LANES)*6 + 8*lane) +: 8],
-                        read_data_store[((DQ_BITS*LANES)*5 + 8*lane) +: 8], read_data_store[((DQ_BITS*LANES)*4 + 8*lane) +: 8], read_data_store[((DQ_BITS*LANES)*3 + 8*lane) +: 8],
-                        read_data_store[((DQ_BITS*LANES)*2 + 8*lane) +: 8],read_data_store[((DQ_BITS*LANES)*1 + 8*lane) +: 8],read_data_store[((DQ_BITS*LANES)*0 + 8*lane) +: 8] }) begin 
-                    /* verilator lint_off WIDTH */
-                    if(lane == LANES - 1) begin
-                    /* verilator lint_on WIDTH */
-                        state_calibrate <= BIST_MODE == 0? FINISH_READ : BURST_WRITE; // go straight to FINISH_READ if BIST_MODE == 0
-                        initial_calibration_done <= 1'b1;
-                        `ifdef UART_DEBUG_ALIGN
-                            uart_start_send <= 1'b1;
-                            //uart_text <= {"state=ANALYZE_DATA_LOW_FREQ, Done All Lanes",8'h0a,"-----------------",8'h0a,8'h0a};
-                            uart_text <= {8'h0a,8'h0a, "Done All Lanes, bitslip_counter=", hex_to_ascii(bitslip_counter), ", shift_read_pipe=", hex_to_ascii(shift_read_pipe), 
-                            ", data_start_index=", hex8_to_ascii(data_start_index[lane]), ", lane_late=", hex_to_ascii(lane_write_dq_late[lane]), 8'h0a,8'h0a, 
-                            {read_data_store[((DQ_BITS*LANES)*7 + 8*lane) +: 8], read_data_store[((DQ_BITS*LANES)*6 + 8*lane) +: 8],
-                            read_data_store[((DQ_BITS*LANES)*5 + 8*lane) +: 8], read_data_store[((DQ_BITS*LANES)*4 + 8*lane) +: 8], read_data_store[((DQ_BITS*LANES)*3 + 8*lane) +: 8],
-                            read_data_store[((DQ_BITS*LANES)*2 + 8*lane) +: 8],read_data_store[((DQ_BITS*LANES)*1 + 8*lane) +: 8],read_data_store[((DQ_BITS*LANES)*0 + 8*lane) +: 8] },
-                                8'h0a,8'h0a,8'h0a,8'h0a};
-                            state_calibrate <= WAIT_UART;
-                            state_calibrate_next <= BIST_MODE == 0? FINISH_READ : BURST_WRITE;
-                        `endif
-                    end        
-                    else begin
-                        lane <= lane + 1;
-                        bitslip_counter <= 0;
-                        `ifdef UART_DEBUG_ALIGN
-                            uart_start_send <= 1'b1;
-                            // uart_text <= {"state=ANALYZE_DATA_LOW_FREQ, Done lane=",hex_to_ascii(lane),8'h0a,"-----------------",8'h0a};
-                            uart_text <= {8'h0a,8'h0a, "Done lane=", hex_to_ascii(lane), ", bitslip_counter=", hex_to_ascii(bitslip_counter), ", shift_read_pipe=", hex_to_ascii(shift_read_pipe), 
-                            ", data_start_index=", hex8_to_ascii(data_start_index[lane]), ", lane_late=", hex_to_ascii(lane_write_dq_late[lane]), 8'h0a,8'h0a, 
-                            {read_data_store[((DQ_BITS*LANES)*7 + 8*lane) +: 8], read_data_store[((DQ_BITS*LANES)*6 + 8*lane) +: 8],
-                            read_data_store[((DQ_BITS*LANES)*5 + 8*lane) +: 8], read_data_store[((DQ_BITS*LANES)*4 + 8*lane) +: 8], read_data_store[((DQ_BITS*LANES)*3 + 8*lane) +: 8],
-                            read_data_store[((DQ_BITS*LANES)*2 + 8*lane) +: 8],read_data_store[((DQ_BITS*LANES)*1 + 8*lane) +: 8],read_data_store[((DQ_BITS*LANES)*0 + 8*lane) +: 8] },
-                                8'h0a,8'h0a,8'h0a,8'h0a};
-                            state_calibrate <= WAIT_UART;
-                            state_calibrate_next <= ANALYZE_DATA_LOW_FREQ;
-                        `endif
-                    end
-            end
-            else begin // issue bitslip then repeat write-read
-                o_phy_bitslip[lane] <= 1'b1;
-                bitslip_counter <= bitslip_counter + 1; // increment counter every bitslip
-                if(bitslip_counter == 7) begin // there are only 8 bitslip, once past this then we shift read pipe backwards (assumption is that we read too early)
-                    shift_read_pipe <= shift_read_pipe + 1;
-                    bitslip_counter <= 0;
-                    if(shift_read_pipe == 1) begin // if shift_read_pipe at end then we increase data_start_index since problem might be write DQ too early thus we shift it later using data_start_index 
-                         shift_read_pipe <= 0;
-                         data_start_index[lane] <= lane_write_dq_late[lane]? data_start_index[lane] - 8: data_start_index[lane] + 8;
-                         if((data_start_index[lane] == 64) && !lane_write_dq_late[lane]) begin // if data_start_index at end then we assert data_start_index, last assumption is that we are writing DQ too late thus we move stage2_data forward to be sent out earlier
-                            data_start_index[lane] <= 64;
-                            lane_write_dq_late[lane] <= 1'b1;
-                         end
-                    end
-                end
-                state_calibrate <= ISSUE_WRITE_1;
-                `ifdef UART_DEBUG_ALIGN
-                    uart_start_send <= 1'b1;
-                    uart_text <= {8'h0a,8'h0a, "lane=", hex_to_ascii(lane), ", bitslip_counter=", hex_to_ascii(bitslip_counter), ", shift_read_pipe=", hex_to_ascii(shift_read_pipe), 
-                            ", data_start_index=", hex8_to_ascii(data_start_index[lane]), ", lane_late=", hex_to_ascii(lane_write_dq_late[lane]), 8'h0a,8'h0a, 
-                            {read_data_store[((DQ_BITS*LANES)*7 + 8*lane) +: 8], read_data_store[((DQ_BITS*LANES)*6 + 8*lane) +: 8],
-                            read_data_store[((DQ_BITS*LANES)*5 + 8*lane) +: 8], read_data_store[((DQ_BITS*LANES)*4 + 8*lane) +: 8], read_data_store[((DQ_BITS*LANES)*3 + 8*lane) +: 8],
-                            read_data_store[((DQ_BITS*LANES)*2 + 8*lane) +: 8],read_data_store[((DQ_BITS*LANES)*1 + 8*lane) +: 8],read_data_store[((DQ_BITS*LANES)*0 + 8*lane) +: 8] },
-                                8'h0a,8'h0a,8'h0a,8'h0a};
-                    state_calibrate <= WAIT_UART;
-                    state_calibrate_next <= ISSUE_WRITE_1;
-                `endif
-            end
-        end
+                            if(write_pattern[0 +: 64] == {read_data_store[((DQ_BITS*LANES)*7 + 8*lane) +: 8], read_data_store[((DQ_BITS*LANES)*6 + 8*lane) +: 8],
+                                        read_data_store[((DQ_BITS*LANES)*5 + 8*lane) +: 8], read_data_store[((DQ_BITS*LANES)*4 + 8*lane) +: 8], read_data_store[((DQ_BITS*LANES)*3 + 8*lane) +: 8],
+                                        read_data_store[((DQ_BITS*LANES)*2 + 8*lane) +: 8],read_data_store[((DQ_BITS*LANES)*1 + 8*lane) +: 8],read_data_store[((DQ_BITS*LANES)*0 + 8*lane) +: 8] }) begin 
+                                    /* verilator lint_off WIDTH */
+                                    if(lane == LANES - 1) begin
+                                    /* verilator lint_on WIDTH */
+                                        state_calibrate <= BIST_MODE == 0? FINISH_READ : BURST_WRITE; // go straight to FINISH_READ if BIST_MODE == 0
+                                        initial_calibration_done <= 1'b1;
+                                        `ifdef UART_DEBUG_ALIGN
+                                            uart_start_send <= 1'b1;
+                                            //uart_text <= {"state=ANALYZE_DATA_LOW_FREQ, Done All Lanes",8'h0a,"-----------------",8'h0a,8'h0a};
+                                            uart_text <= {8'h0a,8'h0a, "Done All Lanes, bitslip_counter=", hex_to_ascii(bitslip_counter), ", shift_read_pipe=", hex_to_ascii(shift_read_pipe), 
+                                            ", data_start_index=", hex8_to_ascii(data_start_index[lane]), ", lane_late=", hex_to_ascii(lane_write_dq_late[lane]), 8'h0a,8'h0a, 
+                                            {read_data_store[((DQ_BITS*LANES)*7 + 8*lane) +: 8], read_data_store[((DQ_BITS*LANES)*6 + 8*lane) +: 8],
+                                            read_data_store[((DQ_BITS*LANES)*5 + 8*lane) +: 8], read_data_store[((DQ_BITS*LANES)*4 + 8*lane) +: 8], read_data_store[((DQ_BITS*LANES)*3 + 8*lane) +: 8],
+                                            read_data_store[((DQ_BITS*LANES)*2 + 8*lane) +: 8],read_data_store[((DQ_BITS*LANES)*1 + 8*lane) +: 8],read_data_store[((DQ_BITS*LANES)*0 + 8*lane) +: 8] },
+                                                8'h0a,8'h0a,8'h0a,8'h0a};
+                                            state_calibrate <= WAIT_UART;
+                                            state_calibrate_next <= BIST_MODE == 0? FINISH_READ : BURST_WRITE;
+                                        `endif
+                                    end        
+                                    else begin
+                                        lane <= lane + 1;
+                                        bitslip_counter <= 0;
+                                        `ifdef UART_DEBUG_ALIGN
+                                            uart_start_send <= 1'b1;
+                                            // uart_text <= {"state=ANALYZE_DATA_LOW_FREQ, Done lane=",hex_to_ascii(lane),8'h0a,"-----------------",8'h0a};
+                                            uart_text <= {8'h0a,8'h0a, "Done lane=", hex_to_ascii(lane), ", bitslip_counter=", hex_to_ascii(bitslip_counter), ", shift_read_pipe=", hex_to_ascii(shift_read_pipe), 
+                                            ", data_start_index=", hex8_to_ascii(data_start_index[lane]), ", lane_late=", hex_to_ascii(lane_write_dq_late[lane]), 8'h0a,8'h0a, 
+                                            {read_data_store[((DQ_BITS*LANES)*7 + 8*lane) +: 8], read_data_store[((DQ_BITS*LANES)*6 + 8*lane) +: 8],
+                                            read_data_store[((DQ_BITS*LANES)*5 + 8*lane) +: 8], read_data_store[((DQ_BITS*LANES)*4 + 8*lane) +: 8], read_data_store[((DQ_BITS*LANES)*3 + 8*lane) +: 8],
+                                            read_data_store[((DQ_BITS*LANES)*2 + 8*lane) +: 8],read_data_store[((DQ_BITS*LANES)*1 + 8*lane) +: 8],read_data_store[((DQ_BITS*LANES)*0 + 8*lane) +: 8] },
+                                                8'h0a,8'h0a,8'h0a,8'h0a};
+                                            state_calibrate <= WAIT_UART;
+                                            state_calibrate_next <= ANALYZE_DATA_LOW_FREQ;
+                                        `endif
+                                    end
+                            end
+                            else begin // issue bitslip then repeat write-read
+                                o_phy_bitslip[lane] <= 1'b1;
+                                bitslip_counter <= bitslip_counter + 1; // increment counter every bitslip
+                                if(bitslip_counter == 7) begin // there are only 8 bitslip, once past this then we shift read pipe backwards (assumption is that we read too early)
+                                    shift_read_pipe <= shift_read_pipe + 1;
+                                    bitslip_counter <= 0;
+                                    if(shift_read_pipe == 1) begin // if shift_read_pipe at end then we increase data_start_index since problem might be write DQ too early thus we shift it later using data_start_index 
+                                        shift_read_pipe <= 0;
+                                        data_start_index[lane] <= lane_write_dq_late[lane]? data_start_index[lane] - 8: data_start_index[lane] + 8;
+                                        if((data_start_index[lane] == 64) && !lane_write_dq_late[lane]) begin // if data_start_index at end then we assert data_start_index, last assumption is that we are writing DQ too late thus we move stage2_data forward to be sent out earlier
+                                            data_start_index[lane] <= 64;
+                                            lane_write_dq_late[lane] <= 1'b1;
+                                        end
+                                    end
+                                end
+                                state_calibrate <= ISSUE_WRITE_1;
+                                `ifdef UART_DEBUG_ALIGN
+                                    uart_start_send <= 1'b1;
+                                    uart_text <= {8'h0a,8'h0a, "lane=", hex_to_ascii(lane), ", bitslip_counter=", hex_to_ascii(bitslip_counter), ", shift_read_pipe=", hex_to_ascii(shift_read_pipe), 
+                                            ", data_start_index=", hex8_to_ascii(data_start_index[lane]), ", lane_late=", hex_to_ascii(lane_write_dq_late[lane]), 8'h0a,8'h0a, 
+                                            {read_data_store[((DQ_BITS*LANES)*7 + 8*lane) +: 8], read_data_store[((DQ_BITS*LANES)*6 + 8*lane) +: 8],
+                                            read_data_store[((DQ_BITS*LANES)*5 + 8*lane) +: 8], read_data_store[((DQ_BITS*LANES)*4 + 8*lane) +: 8], read_data_store[((DQ_BITS*LANES)*3 + 8*lane) +: 8],
+                                            read_data_store[((DQ_BITS*LANES)*2 + 8*lane) +: 8],read_data_store[((DQ_BITS*LANES)*1 + 8*lane) +: 8],read_data_store[((DQ_BITS*LANES)*0 + 8*lane) +: 8] },
+                                                8'h0a,8'h0a,8'h0a,8'h0a};
+                                    state_calibrate <= WAIT_UART;
+                                    state_calibrate_next <= ISSUE_WRITE_1;
+                                `endif
+                            end
+                        end
 
                         // extract burst_0-to-burst_7 data for a specified lane then determine which byte in write_pattern does it starts (ASSUMPTION: the DQ is too early [3d_9177298cd0ad51]c1 is written)
                         // NOTE TO SELF: all "8" here assume DQ_BITS are 8? parameterize this properly
@@ -3016,155 +3016,155 @@ ANALYZE_DATA_LOW_FREQ: if(DLL_OFF) begin // read_data_store should have the expe
                         // if lane_write_dq_late is already set to 1 for this lane, then current lane should already be fixed without changing the data_start_index
         ANALYZE_DATA:   if(prep_done[1]) begin
                             if(write_pattern_matches) begin   
-                            /* verilator lint_off WIDTH */
-                            if(lane == LANES - 1) begin
-                            /* verilator lint_on WIDTH */
-                                state_calibrate <= BIST_MODE == 0? FINISH_READ : BURST_WRITE; // go straight to FINISH_READ if BIST_MODE == 0
-                                initial_calibration_done <= 1'b1;
-                                `ifdef UART_DEBUG_ALIGN
-                                    uart_start_send <= 1'b1;
-                                    uart_text <= {"state=ANALYZE_DATA, Done All Lanes",8'h0a,"-----------------",8'h0a,8'h0a};
-                                    state_calibrate <= WAIT_UART;
-                                    state_calibrate_next <= BIST_MODE == 0? FINISH_READ : BURST_WRITE;
-                                `endif
-                            end        
-                            else begin
-                                lane <= lane + 1;
-                                data_start_index[lane+1] <= 0;
+                                /* verilator lint_off WIDTH */
+                                if(lane == LANES - 1) begin
+                                /* verilator lint_on WIDTH */
+                                    state_calibrate <= BIST_MODE == 0? FINISH_READ : BURST_WRITE; // go straight to FINISH_READ if BIST_MODE == 0
+                                    initial_calibration_done <= 1'b1;
+                                    `ifdef UART_DEBUG_ALIGN
+                                        uart_start_send <= 1'b1;
+                                        uart_text <= {"state=ANALYZE_DATA, Done All Lanes",8'h0a,"-----------------",8'h0a,8'h0a};
+                                        state_calibrate <= WAIT_UART;
+                                        state_calibrate_next <= BIST_MODE == 0? FINISH_READ : BURST_WRITE;
+                                    `endif
+                                end        
+                                else begin
+                                    lane <= lane + 1;
+                                    data_start_index[lane+1] <= 0;
                                     state_calibrate <= ANALYZE_DATA;
-                                `ifdef UART_DEBUG_ALIGN
-                                    uart_start_send <= 1'b1;
-                                    uart_text <= {"state=ANALYZE_DATA, Done lane=",hex_to_ascii(lane),8'h0a,"-----------------",8'h0a};
-                                    state_calibrate <= WAIT_UART;
-                                    state_calibrate_next <= ANALYZE_DATA;
-                                `endif
-                            end
-                      end 
-                      else begin
-                            data_start_index[lane] <= data_start_index[lane] + 8; //skip by 8 (basically we want to delay DQ since it was too early)
-                            if(lane_write_dq_late[lane] && lane_read_dq_early[lane]) begin // both assumption is wrong so we reset the controller
-                                reset_from_calibrate <= 1;
-                            end
-                             // first assumption (write DQ is late) is wrong so we repeat write-read with data_start_index back to 0
-                            else if(lane_write_dq_late[lane]) begin 
-                                data_start_index[lane] <= 0; // set delay to outgoing stage2_data back to zero
-                                if(data_start_index[lane] == 0) begin // if already set to zero then we already did write-read with default zero data_start_index, so we go to CHECK_STARTING_DATA to try second assumtpion
+                                    `ifdef UART_DEBUG_ALIGN
+                                        uart_start_send <= 1'b1;
+                                        uart_text <= {"state=ANALYZE_DATA, Done lane=",hex_to_ascii(lane),8'h0a,"-----------------",8'h0a};
+                                        state_calibrate <= WAIT_UART;
+                                        state_calibrate_next <= ANALYZE_DATA;
+                                    `endif
+                                end
+                            end 
+                            else begin
+                                data_start_index[lane] <= data_start_index[lane] + 8; //skip by 8 (basically we want to delay DQ since it was too early)
+                                if(lane_write_dq_late[lane] && lane_read_dq_early[lane]) begin // both assumption is wrong so we reset the controller
+                                    reset_from_calibrate <= 1;
+                                end
+                                // first assumption (write DQ is late) is wrong so we repeat write-read with data_start_index back to 0
+                                else if(lane_write_dq_late[lane]) begin 
+                                    data_start_index[lane] <= 0; // set delay to outgoing stage2_data back to zero
+                                    if(data_start_index[lane] == 0) begin // if already set to zero then we already did write-read with default zero data_start_index, so we go to CHECK_STARTING_DATA to try second assumtpion
+                                        state_calibrate <= CHECK_STARTING_DATA;
+                                        `ifdef UART_DEBUG_ALIGN
+                                            uart_start_send <= 1'b1;
+                                            uart_text <= {"state=ANALYZE_DATA, lane=",hex_to_ascii(lane), ", First Assumption wrong, Start second assumption: Read too early",8'h0a,8'h0a,
+                                            8'h0a,8'h0a,
+                                            {read_data_store[((DQ_BITS*LANES)*7 + 8*lane) +: 8], read_data_store[((DQ_BITS*LANES)*6 + 8*lane) +: 8],
+                                            read_data_store[((DQ_BITS*LANES)*5 + 8*lane) +: 8], read_data_store[((DQ_BITS*LANES)*4 + 8*lane) +: 8], read_data_store[((DQ_BITS*LANES)*3 + 8*lane) +: 8],
+                                            read_data_store[((DQ_BITS*LANES)*2 + 8*lane) +: 8],read_data_store[((DQ_BITS*LANES)*1 + 8*lane) +: 8],read_data_store[((DQ_BITS*LANES)*0 + 8*lane) +: 8] },
+                                                8'h0a,8'h0a,8'h0a,8'h0a};
+                                            state_calibrate <= WAIT_UART;
+                                            state_calibrate_next <= CHECK_STARTING_DATA;
+                                        `endif
+                                    end
+                                    else begin // if not yet zero then we have to write-read again
+                                        state_calibrate <= ISSUE_WRITE_1;
+                                    end
+                                end
+                                //reached the end but STILL has error, issue might be WRITING TOO LATE (298cd0ad51c1XXXX is written) OR READING TOO EARLY ([9177]_298cd0ad51c1XXXX is read)
+                                else if(data_start_index[lane] == 56) begin 
+                                    data_start_index[lane] <= 0;     
+                                    start_index_check <= 0;
                                     state_calibrate <= CHECK_STARTING_DATA;
                                     `ifdef UART_DEBUG_ALIGN
                                         uart_start_send <= 1'b1;
-                                        uart_text <= {"state=ANALYZE_DATA, lane=",hex_to_ascii(lane), ", First Assumption wrong, Start second assumption: Read too early",8'h0a,8'h0a,
-                                        8'h0a,8'h0a,
-                                        {read_data_store[((DQ_BITS*LANES)*7 + 8*lane) +: 8], read_data_store[((DQ_BITS*LANES)*6 + 8*lane) +: 8],
-                                        read_data_store[((DQ_BITS*LANES)*5 + 8*lane) +: 8], read_data_store[((DQ_BITS*LANES)*4 + 8*lane) +: 8], read_data_store[((DQ_BITS*LANES)*3 + 8*lane) +: 8],
-                                        read_data_store[((DQ_BITS*LANES)*2 + 8*lane) +: 8],read_data_store[((DQ_BITS*LANES)*1 + 8*lane) +: 8],read_data_store[((DQ_BITS*LANES)*0 + 8*lane) +: 8] },
-                                            8'h0a,8'h0a,8'h0a,8'h0a};
+                                        uart_text <= {"state=ANALYZE_DATA, lane=",hex_to_ascii(lane), ", Reached end",8'h0a,8'h0a};
                                         state_calibrate <= WAIT_UART;
                                         state_calibrate_next <= CHECK_STARTING_DATA;
                                     `endif
-                                end
-                                else begin // if not yet zero then we have to write-read again
-                                    state_calibrate <= ISSUE_WRITE_1;
-                                end
-                            end
-                            //reached the end but STILL has error, issue might be WRITING TOO LATE (298cd0ad51c1XXXX is written) OR READING TOO EARLY ([9177]_298cd0ad51c1XXXX is read)
-                            else if(data_start_index[lane] == 56) begin 
-                                data_start_index[lane] <= 0;     
-                                start_index_check <= 0;
-                                state_calibrate <= CHECK_STARTING_DATA;
-                                `ifdef UART_DEBUG_ALIGN
+                                end 
+                            `ifdef UART_DEBUG_ALIGN
+                                else begin
                                     uart_start_send <= 1'b1;
-                                    uart_text <= {"state=ANALYZE_DATA, lane=",hex_to_ascii(lane), ", Reached end",8'h0a,8'h0a};
-                                    state_calibrate <= WAIT_UART;
-                                    state_calibrate_next <= CHECK_STARTING_DATA;
-                                `endif
-                            end 
-                        `ifdef UART_DEBUG_ALIGN
-                            else begin
-                                uart_start_send <= 1'b1;
                                     state_calibrate <= ANALYZE_DATA;
-                                uart_text <= {"state=ANALYZE_DATA, lane=",hex_to_ascii(lane), ", data_start_index[lane]=0x",
-                                    hex_to_ascii(data_start_index[lane][6:4]),hex_to_ascii(data_start_index[lane][3:0]),8'h0a,8'h0a,8'h0a,8'h0a,
-                                    {read_data_store[((DQ_BITS*LANES)*7 + 8*lane) +: 8], read_data_store[((DQ_BITS*LANES)*6 + 8*lane) +: 8],
-                                    read_data_store[((DQ_BITS*LANES)*5 + 8*lane) +: 8], read_data_store[((DQ_BITS*LANES)*4 + 8*lane) +: 8], read_data_store[((DQ_BITS*LANES)*3 + 8*lane) +: 8],
-                                    read_data_store[((DQ_BITS*LANES)*2 + 8*lane) +: 8],read_data_store[((DQ_BITS*LANES)*1 + 8*lane) +: 8],read_data_store[((DQ_BITS*LANES)*0 + 8*lane) +: 8] },
-                                        8'h0a,8'h0a,8'h0a,8'h0a
-                                    };
-                                state_calibrate <= WAIT_UART;
-                                state_calibrate_next <= ANALYZE_DATA;
-                            end
-                        `endif
+                                    uart_text <= {"state=ANALYZE_DATA, lane=",hex_to_ascii(lane), ", data_start_index[lane]=0x",
+                                        hex_to_ascii(data_start_index[lane][6:4]),hex_to_ascii(data_start_index[lane][3:0]),8'h0a,8'h0a,8'h0a,8'h0a,
+                                        {read_data_store[((DQ_BITS*LANES)*7 + 8*lane) +: 8], read_data_store[((DQ_BITS*LANES)*6 + 8*lane) +: 8],
+                                        read_data_store[((DQ_BITS*LANES)*5 + 8*lane) +: 8], read_data_store[((DQ_BITS*LANES)*4 + 8*lane) +: 8], read_data_store[((DQ_BITS*LANES)*3 + 8*lane) +: 8],
+                                        read_data_store[((DQ_BITS*LANES)*2 + 8*lane) +: 8],read_data_store[((DQ_BITS*LANES)*1 + 8*lane) +: 8],read_data_store[((DQ_BITS*LANES)*0 + 8*lane) +: 8] },
+                                            8'h0a,8'h0a,8'h0a,8'h0a
+                                        };
+                                    state_calibrate <= WAIT_UART;
+                                    state_calibrate_next <= ANALYZE_DATA;
+                                end
+                            `endif
                             end     
                         end
                         else begin
                             prep_done <= {prep_done[0],1'b1};
-                      end     
+                        end
 
                       // check when the 4 MSB of write_pattern {d0ad51c1} starts on read_lane_data (read_lane_data is just the concatenation of read_data_store of a specific lane)
                       // assumption here read_lane_data ~= 298cd0ad51c1XXXX is written: either because we write too late (thus we need to delay outgoing stage2_data) OR we read too early (thus we need to calibrate incoming iserdes_dq)
  CHECK_STARTING_DATA: if(prep_done[1]) begin
-                        /* verilator lint_off WIDTHTRUNC */
+                            /* verilator lint_off WIDTHTRUNC */
                             if(read_lane_data_shifted == write_pattern[0 +: 32]) begin
-                        /* verilator lint_on WIDTHTRUNC */
-                            // first assumption: controller DQ is late WHEN WRITING(THUS WE NEED TO CALIBRATE data_start_index of outgoing stage2_data)
-                            if(!lane_write_dq_late[lane]) begin // lane_write_dq_late is not  yet set so we know this first assunmption is not yet tested
-                                state_calibrate <= ISSUE_WRITE_1; // start writing again (the next write should fix the late DQ for this current lane)
-                                data_start_index[lane] <= 64 - start_index_check; // stage2_data_unaligned is forwarded to stage[1] so we are now 8-bursts early, so we subtract from 64 so the burst we will be forwarded to the tip of stage2_data
-                                lane_write_dq_late[lane] <= 1'b1;
-                                `ifdef UART_DEBUG_ALIGN
-                                    uart_start_send <= 1'b1;
-                                    uart_text <= {"state=CHECK_STARTING_DATA, start_index_check=0x",hex8_to_ascii(start_index_check), ", Ongoing First Assumption",8'h0a};
-                                    state_calibrate <= WAIT_UART;
-                                    state_calibrate_next <= ISSUE_WRITE_1;
-                                `endif
-                            end
-                            // if first assumption is not the fix then second assmption: controller reads the DQ too early (THUS WE NEED TO CALIBRATE INCOMING DQ SIGNAL starting from bitslip training)
-                            else begin 
-                                lane_read_dq_early[lane] <= 1'b1; // set to 1 to see later what lanes has this problem
-                                state_calibrate <= BITSLIP_DQS_TRAIN_3;
-                                    added_read_pipe[lane] <= |({ {( 4 - ($clog2(STORED_DQS_SIZE*8) - (3+1)) ){1'b0}} , dq_target_index[lane][$clog2(STORED_DQS_SIZE*8)-1:(3+1)] } 
-                                                                + { 3'b0 , (dq_target_index[lane][3:0] >= (5+8)) })? 'd1 : 'd0; // added_read_pipe can just be 1 or 0
-                                dqs_bitslip_arrangement <= 16'b0011_1100_0011_1100 >> dq_target_index[lane][2:0];
-                                `ifdef UART_DEBUG_ALIGN
-                                    uart_start_send <= 1'b1;
-                                    uart_text <= {"state=CHECK_STARTING_DATA, start_index_check=0x",hex8_to_ascii(start_index_check), ", Ongoing Second Assumption",8'h0a};
-                                    state_calibrate <= WAIT_UART;
-                                    state_calibrate_next <= BITSLIP_DQS_TRAIN_3;
-                                `endif
-                            end
-                        end
-                        else begin
-                            start_index_check <= start_index_check + 16; // plus 16, we assume here that DQ will be late BY 1 DDR3 CLK CYCLE (if only +8, then it will be late by half DDR3 cycle, that should NOT happen)
-                            dq_target_index[lane] <= dq_target_index[lane] + 2;
-                            if(start_index_check == 48)begin // start_index_check is now outside the possible values
-                                // first assumption: controller DQ is 1 CONTROLLER CYCLE late WHEN WRITING (data is written to address 1 and not address 0)
-                                if(!lane_write_dq_late[lane]) begin // lane_write_dq_late is not yet set so we know this first assunmption is not yet tested
+                            /* verilator lint_on WIDTHTRUNC */
+                                // first assumption: controller DQ is late WHEN WRITING(THUS WE NEED TO CALIBRATE data_start_index of outgoing stage2_data)
+                                if(!lane_write_dq_late[lane]) begin // lane_write_dq_late is not  yet set so we know this first assunmption is not yet tested
                                     state_calibrate <= ISSUE_WRITE_1; // start writing again (the next write should fix the late DQ for this current lane)
-                                    data_start_index[lane] <= 1; // stage2_data_unaligned is forwarded to stage[1] so we are now 8-bursts early, since assumption is we are 1 controller cycle early then data_start_index is 64 
+                                    data_start_index[lane] <= 64 - start_index_check; // stage2_data_unaligned is forwarded to stage[1] so we are now 8-bursts early, so we subtract from 64 so the burst we will be forwarded to the tip of stage2_data
                                     lane_write_dq_late[lane] <= 1'b1;
                                     `ifdef UART_DEBUG_ALIGN
                                         uart_start_send <= 1'b1;
-                                        uart_text <= {"state=CHECK_STARTING_DATA, Reached end, First Assumption: Write is 1 Controller cycle early",8'h0a};
+                                        uart_text <= {"state=CHECK_STARTING_DATA, start_index_check=0x",hex8_to_ascii(start_index_check), ", Ongoing First Assumption",8'h0a};
                                         state_calibrate <= WAIT_UART;
                                         state_calibrate_next <= ISSUE_WRITE_1;
                                     `endif
                                 end
-                                else begin // if first assumption is wrong and start_index_check is still outside of possible values then reset
-                                    reset_from_calibrate <= 1;
+                                // if first assumption is not the fix then second assmption: controller reads the DQ too early (THUS WE NEED TO CALIBRATE INCOMING DQ SIGNAL starting from bitslip training)
+                                else begin 
+                                    lane_read_dq_early[lane] <= 1'b1; // set to 1 to see later what lanes has this problem
+                                    state_calibrate <= BITSLIP_DQS_TRAIN_3;
+                                    added_read_pipe[lane] <= |({ {( 4 - ($clog2(STORED_DQS_SIZE*8) - (3+1)) ){1'b0}} , dq_target_index[lane][$clog2(STORED_DQS_SIZE*8)-1:(3+1)] } 
+                                                                + { 3'b0 , (dq_target_index[lane][3:0] >= (5+8)) })? 'd1 : 'd0; // added_read_pipe can just be 1 or 0
+                                    dqs_bitslip_arrangement <= 16'b0011_1100_0011_1100 >> dq_target_index[lane][2:0];
+                                    `ifdef UART_DEBUG_ALIGN
+                                        uart_start_send <= 1'b1;
+                                        uart_text <= {"state=CHECK_STARTING_DATA, start_index_check=0x",hex8_to_ascii(start_index_check), ", Ongoing Second Assumption",8'h0a};
+                                        state_calibrate <= WAIT_UART;
+                                        state_calibrate_next <= BITSLIP_DQS_TRAIN_3;
+                                    `endif
                                 end
                             end
-                        `ifdef UART_DEBUG_ALIGN
                             else begin
-                                uart_start_send <= 1'b1;
-                                uart_text <= {"state=CHECK_STARTING_DATA, start_index_check=", hex_to_ascii(start_index_check[5:4]), hex_to_ascii(start_index_check[3:0]),8'h0a};
-                                state_calibrate <= WAIT_UART;
-                                state_calibrate_next <= CHECK_STARTING_DATA;
+                                start_index_check <= start_index_check + 16; // plus 16, we assume here that DQ will be late BY 1 DDR3 CLK CYCLE (if only +8, then it will be late by half DDR3 cycle, that should NOT happen)
+                                dq_target_index[lane] <= dq_target_index[lane] + 2;
+                                if(start_index_check == 48)begin // start_index_check is now outside the possible values
+                                    // first assumption: controller DQ is 1 CONTROLLER CYCLE late WHEN WRITING (data is written to address 1 and not address 0)
+                                    if(!lane_write_dq_late[lane]) begin // lane_write_dq_late is not yet set so we know this first assunmption is not yet tested
+                                        state_calibrate <= ISSUE_WRITE_1; // start writing again (the next write should fix the late DQ for this current lane)
+                                        data_start_index[lane] <= 1; // stage2_data_unaligned is forwarded to stage[1] so we are now 8-bursts early, since assumption is we are 1 controller cycle early then data_start_index is 64 
+                                        lane_write_dq_late[lane] <= 1'b1;
+                                        `ifdef UART_DEBUG_ALIGN
+                                            uart_start_send <= 1'b1;
+                                            uart_text <= {"state=CHECK_STARTING_DATA, Reached end, First Assumption: Write is 1 Controller cycle early",8'h0a};
+                                            state_calibrate <= WAIT_UART;
+                                            state_calibrate_next <= ISSUE_WRITE_1;
+                                        `endif
+                                    end
+                                    else begin // if first assumption is wrong and start_index_check is still outside of possible values then reset
+                                        reset_from_calibrate <= 1;
+                                    end
+                                end
+                            `ifdef UART_DEBUG_ALIGN
+                                else begin
+                                    uart_start_send <= 1'b1;
+                                    uart_text <= {"state=CHECK_STARTING_DATA, start_index_check=", hex_to_ascii(start_index_check[5:4]), hex_to_ascii(start_index_check[3:0]),8'h0a};
+                                    state_calibrate <= WAIT_UART;
+                                    state_calibrate_next <= CHECK_STARTING_DATA;
+                                end
+                            `endif
                             end
-                         `endif
-                        end
                         end
                     else begin
                         prep_done <= {prep_done[0],1'b1};
-                      end
+                    end
       
 BITSLIP_DQS_TRAIN_3: if(train_delay == 0) begin //train again the ISERDES to capture the DQ correctly
                         if(i_phy_iserdes_bitslip_reference[lane*serdes_ratio*2 +: 8] == dqs_bitslip_arrangement[7:0]) begin
