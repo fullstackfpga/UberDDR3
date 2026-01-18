@@ -518,7 +518,7 @@ module ddr3_controller #(
     end
     reg cmd_odt_q = 0, cmd_odt, cmd_reset_n;
     reg[DUAL_RANK_DIMM:0] cmd_ck_en, prev_cmd_ck_en;  
-    reg o_wb_stall_q = 1, o_wb_stall_d, o_wb_stall_calib = 1;
+    reg o_wb_stall_int_q = 1, o_wb_stall_int_d, o_wb_stall_calib;
     reg precharge_slot_busy;
     reg activate_slot_busy;
     reg[1:0] write_dqs_q;
@@ -671,7 +671,6 @@ module ddr3_controller #(
     
     // initial block for all regs
     initial begin
-        o_wb_stall = 1;
         for(index = 0; index < MAX_ADDED_READ_ACK_DELAY; index = index + 1) begin
             o_wb_ack_read_q[index] = 0;
         end
@@ -955,9 +954,7 @@ module ddr3_controller #(
     //process request transaction 
     always @(posedge i_controller_clk) begin
         if(sync_rst_controller) begin
-            o_wb_stall <= 1'b1; 
-            o_wb_stall_q <= 1'b1;
-            o_wb_stall_calib <= 1'b1;
+            o_wb_stall_int_q <= 1'b1;
             //set stage 1 to 0
             stage1_pending <= 0;
             stage1_aux <= 0;
@@ -1018,15 +1015,7 @@ module ddr3_controller #(
         end
         
         else begin 
-            o_wb_stall <= o_wb_stall_d || state_calibrate != DONE_CALIBRATE;
-            o_wb_stall_q <= o_wb_stall_d; 
-            o_wb_stall_calib <= o_wb_stall_d; //wb stall for calibration stage
-            //refresh sequence is on-going
-            if(!instruction[REF_IDLE]) begin
-                //no transaction will be pending during refresh
-                o_wb_stall <= 1'b1; 
-                o_wb_stall_calib <= 1'b1;
-            end
+            o_wb_stall_int_q <= o_wb_stall_int_d;
             // stage 1
             stage1_pending <= stage1_pending_d;
             stage1_aux <= stage1_aux_d;
@@ -2062,66 +2051,77 @@ module ddr3_controller #(
         // a way that it will only stall next clock cycle if the pipeline will be full on the next clock cycle.
         // Excel sheet design planning: https://docs.google.com/spreadsheets/d/1_8vrLmVSFpvRD13Mk8aNAMYlh62SfpPXOCYIQFEtcs4/edit?gid=668378527#gid=668378527
         // Old: https://1drv.ms/x/s!AhWdq9CipeVagSqQXPwRmXhDgttL?e=vVYIxE&nav=MTVfezAwMDAwMDAwLTAwMDEtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMH0
-        // if(o_wb_stall_q) o_wb_stall_d = stage2_stall;
-        // else if( (!i_wb_stb && final_calibration_done) || (!calib_stb && state_calibrate != DONE_CALIBRATE) ) o_wb_stall_d = 0; 
-        // else if(!stage1_pending) o_wb_stall_d = stage2_stall;
-        // else o_wb_stall_d = stage1_stall;
+        // if(o_wb_stall_int_q) o_wb_stall_int_d = stage2_stall;
+        // else if( (!i_wb_stb && final_calibration_done) || (!calib_stb && !final_calibration_done) ) o_wb_stall_int_d = 0; 
+        // else if(!stage1_pending) o_wb_stall_int_d = stage2_stall;
+        // else o_wb_stall_int_d = stage1_stall;
 
-        // if( !o_wb_stall_q && !i_wb_stb ) o_wb_stall_d = 1'b0;
-        // else if(ecc_stage1_stall) o_wb_stall_d = 1'b1;
-        // else if(stage0_pending) o_wb_stall_d = ecc_stage2_stall || stage1_stall;
+        // if( !o_wb_stall_int_q && !i_wb_stb ) o_wb_stall_int_d = 1'b0;
+        // else if(ecc_stage1_stall) o_wb_stall_int_d = 1'b1;
+        // else if(stage0_pending) o_wb_stall_int_d = ecc_stage2_stall || stage1_stall;
         // else begin
-        //     if(o_wb_stall_q) o_wb_stall_d = stage2_stall;
-        //     else o_wb_stall_d = stage1_stall;
+        //     if(o_wb_stall_int_q) o_wb_stall_int_d = stage2_stall;
+        //     else o_wb_stall_int_d = stage1_stall;
         // end
         // pipeline control for ECC_ENABLE != 3
+
         if(ECC_ENABLE != 3) begin
             if(!i_wb_cyc && final_calibration_done) begin
-                o_wb_stall_d = 0;
+                o_wb_stall_int_d = 0;
             end
-            else if(!o_wb_stall_q && ( (!i_wb_stb && final_calibration_done) || (!calib_stb && !final_calibration_done) )) begin
-                o_wb_stall_d = 0;
+            else if(!o_wb_stall_int_q && ( (!i_wb_stb && final_calibration_done) || (!calib_stb && !final_calibration_done) )) begin
+                o_wb_stall_int_d = 0;
             end
-            else if(o_wb_stall_q || !stage1_pending)  begin
-                o_wb_stall_d = stage2_stall;
+            else if(o_wb_stall_int_q || !stage1_pending)  begin
+                o_wb_stall_int_d = stage2_stall;
             end
             else begin
-                o_wb_stall_d = stage1_stall;
+                o_wb_stall_int_d = stage1_stall;
             end
         end
         // pipeline control for ECC_ENABLE = 3
         else begin
             if(!i_wb_cyc && final_calibration_done) begin
-                o_wb_stall_d = 1'b0;
+                o_wb_stall_int_d = 1'b0;
             end
             else if(ecc_stage1_stall) begin
-                o_wb_stall_d = 1'b1;
+                o_wb_stall_int_d = 1'b1;
             end
-            else if(!o_wb_stall_q && ( (!i_wb_stb && final_calibration_done) || (!calib_stb && !final_calibration_done) )) begin
-                o_wb_stall_d = 1'b0;
+            else if(!o_wb_stall_int_q && ( (!i_wb_stb && final_calibration_done) || (!calib_stb && !final_calibration_done) )) begin
+                o_wb_stall_int_d = 1'b0;
             end
             else if(stage0_pending) begin
-                o_wb_stall_d = !stage2_update || stage1_stall;
+                o_wb_stall_int_d = !stage2_update || stage1_stall;
             end
             else begin
-                if(o_wb_stall_q || !stage1_pending)  begin
-                    o_wb_stall_d = stage2_stall;
+                if(o_wb_stall_int_q || !stage1_pending)  begin
+                    o_wb_stall_int_d = stage2_stall;
                 end
                 else begin
-                    o_wb_stall_d = stage1_stall;
+                    o_wb_stall_int_d = stage1_stall;
                 end
             end
         end
     end //end of always block
 
+    always @* begin
+        force_o_wb_stall_high_d = !final_calibration_done || !instruction[REF_IDLE];
+        force_o_wb_stall_calib_high_d = !instruction[REF_IDLE];
+        o_wb_stall = o_wb_stall_int_q || force_o_wb_stall_high_q;
+        o_wb_stall_calib = o_wb_stall_int_q || force_o_wb_stall_calib_high_q;
+    end
 
     // register previous value of cmd_ck_en
     always @(posedge i_controller_clk) begin
         if(sync_rst_controller) begin
             prev_cmd_ck_en <= 0;
+            force_o_wb_stall_high_q <= 0;
+            force_o_wb_stall_calib_high_q <= 0;
         end
         else begin
             prev_cmd_ck_en <= cmd_ck_en;
+            force_o_wb_stall_high_q <= force_o_wb_stall_high_d;
+            force_o_wb_stall_calib_high_q <= force_o_wb_stall_calib_high_d;
         end
     end
     
@@ -5110,7 +5110,7 @@ ALTERNATE_WRITE_READ: if(!o_wb_stall_calib) begin
 
                 // stage0_pending will rise to high if ecc_stage1_stall is high the previous cycle and stall is low
                 if(stage0_pending && !$past(stage0_pending)) begin
-                    assert($past(ecc_stage1_stall) && !$past(o_wb_stall_q));
+                    assert($past(ecc_stage1_stall) && !$past(o_wb_stall_int_q));
                 end
 
                 // stage0_pending currently high means stage2 and stage1 is pending, and there is ECC request on stage2
@@ -5209,7 +5209,7 @@ ALTERNATE_WRITE_READ: if(!o_wb_stall_calib) begin
                         assert(!stage1_pending);
                         assert(!stage2_pending);
                     end
-                    if($past(o_wb_stall_q) && stage1_pending && !$past(stage1_update)) begin //if pipe did not move forward
+                    if($past(o_wb_stall_int_q) && stage1_pending && !$past(stage1_update)) begin //if pipe did not move forward
                        assert(stage1_we == $past(stage1_we));
                        assert(stage1_aux == $past(stage1_aux));
                        assert(stage1_bank == $past(stage1_bank));
